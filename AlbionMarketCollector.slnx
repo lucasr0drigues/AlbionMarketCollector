@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AlbionMarketCollector.Application/AlbionMarketCollector.Application.csproj" />
+    <Project Path="src/AlbionMarketCollector.Domain/AlbionMarketCollector.Domain.csproj" />
+    <Project Path="src/AlbionMarketCollector.Infrastructure/AlbionMarketCollector.Infrastructure.csproj" />
+    <Project Path="src/AlbionMarketCollector.Worker/AlbionMarketCollector.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AlbionMarketCollector.IntegrationTests/AlbionMarketCollector.IntegrationTests.csproj" />
+    <Project Path="tests/AlbionMarketCollector.UnitTests/AlbionMarketCollector.UnitTests.csproj" />
+  </Folder>
+</Solution>

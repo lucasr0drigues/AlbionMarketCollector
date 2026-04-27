@@ -427,3 +427,12 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Project documentation output
+docs/
+
+# Local capture artifacts
+captures/
+
+# Local SDK state for sandboxed dotnet commands
+.dotnet-home/
