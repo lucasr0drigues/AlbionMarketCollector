@@ -1,0 +1,25 @@
+namespace AlbionMarketCollector.Application.Models;
+
+public sealed record BlackMarketFlipOpportunity(
+    string ItemUniqueName,
+    string ItemLocalizedName,
+    int QualityLevel,
+    int EnchantmentLevel,
+    string SourceLocationId,
+    string SourceLocationName,
+    string BlackMarketLocationId,
+    string BlackMarketLocationName,
+    long BuyOrderId,
+    long BuyPriceSilver,
+    long BuyAmount,
+    DateTimeOffset BuyLastSeenAtUtc,
+    double BuyAgeMinutes,
+    long SellOrderId,
+    long SellPriceSilver,
+    long SellAmount,
+    DateTimeOffset SellLastSeenAtUtc,
+    double SellAgeMinutes,
+    long MaxTradableAmount,
+    long ProfitPerItemSilver,
+    decimal ProfitPercent,
+    long EstimatedTotalProfitSilver);

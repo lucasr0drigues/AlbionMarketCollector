@@ -434,5 +434,9 @@ docs/
 # Local capture artifacts
 captures/
 
+# Frontend build output
+web/**/dist/
+web/**/.angular/
+
 # Local SDK state for sandboxed dotnet commands
 .dotnet-home/

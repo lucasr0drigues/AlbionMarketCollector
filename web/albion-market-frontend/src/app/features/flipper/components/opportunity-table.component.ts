@@ -1,0 +1,452 @@
+import { ChangeDetectionStrategy, Component, EventEmitter, Output, computed, effect, input, signal, untracked } from '@angular/core';
+import { FlipOpportunity } from '../../../core/models';
+import { SilverPipe } from '../../../core/formatting/silver.pipe';
+import { rowAgeMinutes } from '../../../core/domain/freshness';
+import { buildProfitTierMap, ProfitTier } from '../../../core/domain/profit-tier';
+import { qualityMeta, extractTier, extractEnchant, TIER_COLORS } from '../../../core/domain/quality';
+import { SOURCE_LOCATIONS, SELLING_LOCATIONS } from '../../../core/domain/locations';
+
+export type SortKey = 'item' | 'quality' | 'buyPrice' | 'route' | 'sellPrice' | 'profit' | 'total' | 'qty' | 'freshness';
+export type SortDirection = 'asc' | 'desc';
+
+// Item Quality Buy@Source Route Sell@Dest Profit/Unit Total Qty Age Chevron
+const COL_GRID = '1.5fr 0.5fr 0.85fr 1.0fr 0.85fr 1.1fr 0.95fr 0.35fr 0.65fr 28px';
+
+function ageColor(minutes: number): string {
+  if (minutes < 15) return 'var(--color-profit)';
+  if (minutes < 60) return 'var(--color-warn)';
+  return 'var(--color-danger)';
+}
+
+function fmtAge(m: number): string {
+  const total = Math.round(m);
+  if (total < 60) return `${total}m`;
+  const h = Math.floor(total / 60);
+  const min = total % 60;
+  return min === 0 ? `${h}h` : `${h}h ${min}m`;
+}
+
+interface Row {
+  data: FlipOpportunity;
+  ageMinutes: number;
+  tier: string | null;
+  enchant: string;
+  qualityLabel: string;
+  qualityColor: string;
+  qualityBorder: string;
+  qualityGlow: boolean;
+  sourceLabel: string;
+  destLabel: string;
+  isBM: boolean;
+  profitTier: ProfitTier;
+  totalTier: ProfitTier;
+}
+
+const sourceMap = new Map(SOURCE_LOCATIONS.flatMap((o) => o.ids.map((id) => [id, o.label] as const)));
+const sellingMap = new Map(SELLING_LOCATIONS.flatMap((o) => o.ids.map((id) => [id, o.label] as const)));
+
+const COLS: Array<{ key: SortKey | null; label: string; align: 'left' | 'right' | 'center' }> = [
+  { key: 'item',      label: 'ITEM',          align: 'left' },
+  { key: 'quality',   label: 'QUALITY',        align: 'center' },
+  { key: 'buyPrice',  label: 'BUY @ SOURCE',   align: 'right' },
+  { key: 'route',     label: 'ROUTE',          align: 'left' },
+  { key: 'sellPrice', label: 'SELL @ DEST',    align: 'right' },
+  { key: 'profit',    label: 'PROFIT / UNIT',  align: 'right' },
+  { key: 'total',     label: 'TOTAL PROFIT',   align: 'right' },
+  { key: 'qty',       label: 'QTY',            align: 'center' },
+  { key: 'freshness', label: 'AGE',            align: 'right' },
+  { key: null,        label: '',               align: 'center' },
+];
+
+const PAGE_SIZE = 48;
+
+@Component({
+  selector: 'app-opportunity-table',
+  standalone: true,
+  host: { style: 'flex:1;overflow:hidden;display:flex;flex-direction:column;min-width:0;' },
+  imports: [SilverPipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+      <!-- Header -->
+      <div [style.grid-template-columns]="colGrid" style="display:grid;gap:0 8px;padding:7px 16px;border-bottom:1px solid var(--color-border);flex-shrink:0;">
+        @for (col of cols; track col.label) {
+          <button
+            type="button"
+            [disabled]="col.key === null"
+            (click)="col.key && setSort(col.key)"
+            [style.justify-content]="col.align === 'right' ? 'flex-end' : col.align === 'center' ? 'center' : 'flex-start'"
+            [style.color]="sortKey() === col.key ? 'var(--color-gold)' : 'var(--color-text-muted)'"
+            [style.padding-right]="col.key === 'buyPrice' ? '24px' : '0'"
+            style="display:flex;align-items:center;gap:4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;background:none;cursor:pointer;transition:color 0.12s;white-space:nowrap;border:none;"
+          >
+            {{ col.label }}
+            @if (col.key !== null) {
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M5 2L8 5H2L5 2Z" [attr.fill]="sortKey() === col.key && sortDirection() === 'desc' ? 'var(--color-gold)' : 'var(--color-border-strong)'" />
+                <path d="M5 8L8 5H2L5 8Z" [attr.fill]="sortKey() === col.key && sortDirection() === 'asc' ? 'var(--color-gold)' : 'var(--color-border-strong)'" />
+              </svg>
+            }
+          </button>
+        }
+      </div>
+
+      <!-- Rows -->
+      <div style="flex:1;overflow-y:auto;">
+        @for (row of rows(); track rowKey(row); let isTop = $first) {
+          <div
+            (click)="rowClick.emit(row.data)"
+            [style.background]="selected() === row.data ? 'rgba(255,255,255,0.05)' : profitTierBg(row.totalTier)"
+            [style.border-left]="borderLeft(row, selected() === row.data)"
+            [style.grid-template-columns]="colGrid"
+            style="display:grid;align-items:center;gap:0 8px;padding:10px 16px;border-bottom:1px solid var(--color-border);cursor:pointer;transition:background 0.1s;position:relative;"
+            onmouseenter="if(this.style.background==='transparent'||this.style.background==='') this.style.background='rgba(255,255,255,0.028)';"
+            onmouseleave="this._resetBg && this._resetBg();"
+          >
+            <!-- Item -->
+            <div style="display:flex;align-items:center;gap:9px;min-width:0;">
+              <div
+                class="item-icon-hover"
+                [style.border]="'2px solid ' + row.qualityBorder"
+                [style.box-shadow]="row.qualityGlow ? '0 0 8px ' + row.qualityBorder + '60' : 'none'"
+                style="width:42px;height:42px;border-radius:6px;background:var(--color-surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;"
+              >
+                <img
+                  [src]="imgUrl(row.data)"
+                  [alt]="row.data.itemLocalizedName"
+                  loading="lazy"
+                  style="width:100%;height:100%;object-fit:contain;"
+                />
+              </div>
+              <div style="min-width:0;">
+                <div style="font-size:14px;font-weight:600;color:var(--color-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ row.data.itemLocalizedName }}</div>
+                @if (row.tier) {
+                  <span
+                    [style.color]="tierColor(row.tier)"
+                    [style.background]="tierColor(row.tier) + '18'"
+                    [style.border]="'1px solid ' + tierColor(row.tier) + '30'"
+                    class="mono"
+                    style="display:inline-flex;align-items:center;gap:1px;font-size:11px;font-weight:600;border-radius:4px;padding:1px 5px;letter-spacing:0.03em;flex-shrink:0;"
+                  >
+                    {{ row.tier }}{{ row.enchant && ('@' + row.enchant.replace('@', '')) }}
+                  </span>
+                }
+              </div>
+            </div>
+
+            <!-- Quality -->
+            <div style="display:flex;justify-content:center;">
+              <span [style.color]="row.qualityColor" style="font-size:11px;font-weight:600;white-space:nowrap;letter-spacing:0.01em;">
+                {{ row.qualityLabel }}
+              </span>
+            </div>
+
+            <!-- Buy @ Source (extra right padding separates it from Route) -->
+            <div style="text-align:right;padding-right:24px;">
+              <span class="mono" style="font-size:12px;color:var(--color-blue);">{{ row.data.sellPriceSilver | silver }}</span>
+            </div>
+
+            <!-- Route: Source → Dest -->
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span [style.color]="'var(--color-blue)'" style="display:inline-block;font-size:11px;font-weight:500;background:var(--color-blue-dim);border:1px solid rgba(56,189,248,0.3);border-radius:4px;padding:2px 7px;white-space:nowrap;">
+                {{ row.sourceLabel }}
+              </span>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="flex-shrink:0;opacity:0.5;">
+                <path d="M2 7h10M8 3l4 4-4 4" stroke="var(--color-text-faint)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span
+                [style.color]="row.isBM ? 'var(--color-purple)' : 'var(--color-blue)'"
+                [style.background]="row.isBM ? 'var(--color-purple-dim)' : 'var(--color-blue-dim)'"
+                [style.border-color]="row.isBM ? 'rgba(167,139,250,0.3)' : 'rgba(56,189,248,0.3)'"
+                style="display:inline-block;font-size:11px;font-weight:500;border:1px solid;border-radius:4px;padding:2px 7px;white-space:nowrap;"
+              >
+                {{ row.isBM ? '⬡ ' : '' }}{{ row.destLabel }}
+              </span>
+            </div>
+
+            <!-- Sell @ Dest (no extra left gap, sits close to Route) -->
+            <div style="text-align:right;padding-left:0;">
+              <span class="mono" style="font-size:12px;color:var(--color-purple);">{{ row.data.buyPriceSilver | silver }}</span>
+            </div>
+
+            <!-- Profit / Unit -->
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+              <span [style.color]="profitColor(row.profitTier)" class="mono" style="font-size:14px;font-weight:700;">+{{ row.data.profitPerItemSilver | silver }}</span>
+              <span [style.color]="profitColor(row.profitTier)" [style.background]="profitBg(row.profitTier)" [style.border]="'1px solid ' + profitColor(row.profitTier) + '30'" class="mono" style="font-size:11px;font-weight:600;border-radius:3px;padding:1px 5px;">
+                +{{ row.data.profitPercent >= 100 ? row.data.profitPercent.toFixed(0) : row.data.profitPercent.toFixed(1) }}%
+              </span>
+            </div>
+
+            <!-- Total Profit -->
+            <div style="text-align:right;">
+              <span [style.color]="profitColor(row.totalTier)" class="mono" style="font-size:12px;font-weight:600;">+{{ row.data.estimatedTotalProfitSilver | silver }}</span>
+            </div>
+
+            <!-- Qty -->
+            <div style="text-align:center;">
+              <span class="mono" [style.color]="row.data.maxTradableAmount >= 3 ? 'var(--color-text)' : 'var(--color-text-muted)'" style="font-size:14px;font-weight:600;">{{ row.data.maxTradableAmount }}</span>
+            </div>
+
+            <!-- Age -->
+            <div style="display:flex;justify-content:flex-end;align-items:center;gap:5px;">
+              <span [style.background]="ageColor(row.ageMinutes)" [style.box-shadow]="'0 0 5px ' + ageColor(row.ageMinutes) + '80'" style="width:6px;height:6px;border-radius:50%;flex-shrink:0;display:block;"></span>
+              <span class="mono" [style.color]="ageColor(row.ageMinutes)" style="font-size:11px;font-weight:500;">{{ fmtAge(row.ageMinutes) }}</span>
+            </div>
+
+            <!-- Chevron -->
+            <div style="display:flex;justify-content:center;color:var(--color-text-muted);">
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M4.5 2.5L7.5 6l-3 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+          </div>
+        } @empty {
+          <ng-content select="[empty]" />
+        }
+      </div>
+
+      <!-- Totals row -->
+      @if (allRows().length > 0) {
+        <div [style.grid-template-columns]="colGrid" style="display:grid;align-items:center;gap:0 8px;padding:9px 16px;border-top:1px solid var(--color-border-strong);background:var(--color-surface-2);flex-shrink:0;">
+          <div style="font-size:11px;font-weight:700;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:0.06em;">{{ allRows().length }} rows</div>
+          <div></div>
+          <!-- Total buy value -->
+          <div style="text-align:right;padding-right:24px;">
+            <div style="font-size:11px;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px;">total buy</div>
+            <span class="mono" style="font-size:12px;color:var(--color-blue);">{{ totalBuyValue() | silver }}</span>
+          </div>
+          <div></div>
+          <div></div>
+          <!-- Avg profit/unit -->
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+            <div style="font-size:11px;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px;">avg/unit</div>
+            <span class="mono" style="font-size:12px;color:var(--color-profit);">+{{ avgProfitPerUnit() | silver }}</span>
+          </div>
+          <!-- Total profit -->
+          <div style="text-align:right;">
+            <div style="font-size:11px;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px;">total</div>
+            <span class="mono" style="font-size:12px;color:var(--color-profit);">+{{ totalProfit() | silver }}</span>
+          </div>
+          <!-- Total qty -->
+          <div style="text-align:center;">
+            <div style="font-size:11px;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px;">qty</div>
+            <span class="mono" style="font-size:12px;color:var(--color-text);">{{ totalQty() }}</span>
+          </div>
+          <div></div>
+          <div></div>
+        </div>
+      }
+
+      <!-- Pagination -->
+      @if (totalPages() > 1) {
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 16px;border-top:1px solid var(--color-border);background:var(--color-surface-2);flex-shrink:0;">
+          <span class="mono" style="font-size:11px;color:var(--color-text-muted);">
+            {{ pageStart() }}–{{ pageEnd() }} of {{ allRows().length }}
+          </span>
+          <div style="display:flex;align-items:center;gap:2px;">
+            <button type="button" (click)="prevPage()" [disabled]="currentPage() === 0"
+              style="display:flex;align-items:center;justify-content:center;width:30px;height:28px;border-radius:5px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer;transition:all 0.1s;font-size:12px;"
+              onmouseenter="if(!this.disabled){this.style.background='var(--color-surface-3)';this.style.color='var(--color-text)';}"
+              onmouseleave="this.style.background='transparent';this.style.color='var(--color-text-muted)';"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M8 3L4 7l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+
+            @for (page of visiblePageNumbers(); track $index) {
+              @if (page === -1) {
+                <span style="width:28px;text-align:center;font-size:12px;color:var(--color-text-faint);">…</span>
+              } @else {
+                <button type="button" (click)="goToPage(page)"
+                  [style.background]="currentPage() === page ? 'var(--color-gold-dim)' : 'transparent'"
+                  [style.color]="currentPage() === page ? 'var(--color-gold)' : 'var(--color-text-muted)'"
+                  [style.border-color]="currentPage() === page ? 'rgba(214,168,79,0.3)' : 'var(--color-border)'"
+                  [style.font-weight]="currentPage() === page ? '600' : '400'"
+                  style="display:flex;align-items:center;justify-content:center;width:30px;height:28px;border-radius:5px;border:1px solid;cursor:pointer;transition:all 0.1s;font-size:12px;"
+                  onmouseenter="if(this.style.background!=='var(--color-gold-dim)'){this.style.background='var(--color-surface-3)';this.style.color='var(--color-text)';}"
+                  onmouseleave="if(this.style.fontWeight!=='600'){this.style.background='transparent';this.style.color='var(--color-text-muted)';}"
+                >{{ page + 1 }}</button>
+              }
+            }
+
+            <button type="button" (click)="nextPage()" [disabled]="currentPage() === totalPages() - 1"
+              style="display:flex;align-items:center;justify-content:center;width:30px;height:28px;border-radius:5px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer;transition:all 0.1s;font-size:12px;"
+              onmouseenter="if(!this.disabled){this.style.background='var(--color-surface-3)';this.style.color='var(--color-text)';}"
+              onmouseleave="this.style.background='transparent';this.style.color='var(--color-text-muted)';"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M6 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+      }
+  `,
+})
+export class OpportunityTableComponent {
+  readonly opportunities = input.required<FlipOpportunity[]>();
+  readonly selected = input<FlipOpportunity | null>(null);
+  readonly sortKey = input<SortKey>('total');
+  readonly sortDirection = input<SortDirection>('desc');
+
+  @Output() readonly rowClick = new EventEmitter<FlipOpportunity>();
+  @Output() readonly sortChange = new EventEmitter<{ key: SortKey; direction: SortDirection }>();
+  @Output() readonly visibleCountChange = new EventEmitter<number>();
+
+  readonly colGrid = COL_GRID;
+  readonly cols = COLS;
+
+  readonly currentPage = signal(0);
+
+  constructor() {
+    effect(() => {
+      this.opportunities();
+      untracked(() => this.currentPage.set(0));
+    }, { allowSignalWrites: true });
+
+    effect(() => {
+      this.visibleCountChange.emit(this.rows().length);
+    });
+  }
+
+  readonly allRows = computed<Row[]>(() => {
+    const data = this.opportunities();
+    const sorted = [...data].sort((a, b) => this.compare(a, b));
+    const profitTiers = buildProfitTierMap(data, (r) => r.profitPerItemSilver);
+    const totalTiers = buildProfitTierMap(data, (r) => r.estimatedTotalProfitSilver);
+    return sorted.map<Row>((d) => {
+      const q = qualityMeta(d.qualityLevel);
+      const isBlackMarket = d.blackMarketLocationId === '3003' || d.blackMarketLocationName?.toLowerCase().includes('black market');
+      return {
+        data: d,
+        ageMinutes: rowAgeMinutes(d.buyAgeMinutes, d.sellAgeMinutes),
+        tier: extractTier(d.itemUniqueName),
+        enchant: extractEnchant(d.itemUniqueName),
+        qualityLabel: q.label,
+        qualityColor: q.color,
+        qualityBorder: q.border,
+        qualityGlow: q.glow,
+        sourceLabel: sourceMap.get(d.sourceLocationId) ?? d.sourceLocationName,
+        destLabel: sellingMap.get(d.blackMarketLocationId) ?? d.blackMarketLocationName,
+        isBM: isBlackMarket,
+        profitTier: profitTiers.get(d) ?? 'mid',
+        totalTier: totalTiers.get(d) ?? 'mid',
+      };
+    });
+  });
+
+  readonly rows = computed<Row[]>(() => {
+    const all = this.allRows();
+    const page = this.currentPage();
+    return all.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  });
+
+  readonly totalPages = computed(() => Math.ceil(this.allRows().length / PAGE_SIZE));
+  readonly pageStart = computed(() => this.currentPage() * PAGE_SIZE + 1);
+  readonly pageEnd = computed(() => Math.min((this.currentPage() + 1) * PAGE_SIZE, this.allRows().length));
+
+  readonly totalBuyValue = computed(() => this.opportunities().reduce((s, o) => s + o.sellPriceSilver * o.maxTradableAmount, 0));
+  readonly totalProfit = computed(() => this.opportunities().reduce((s, o) => s + o.estimatedTotalProfitSilver, 0));
+  readonly avgProfitPerUnit = computed(() => {
+    const opps = this.opportunities();
+    if (opps.length === 0) return 0;
+    return opps.reduce((s, o) => s + o.profitPerItemSilver, 0) / opps.length;
+  });
+  readonly totalQty = computed(() => this.opportunities().reduce((s, o) => s + o.maxTradableAmount, 0));
+
+  imgUrl(d: FlipOpportunity): string {
+    const base = d.enchantmentLevel > 0 && !d.itemUniqueName.includes('@')
+      ? `${d.itemUniqueName}@${d.enchantmentLevel}`
+      : d.itemUniqueName;
+    return `https://render.albiononline.com/v1/item/${base}`;
+  }
+
+  tierColor(tier: string): string {
+    return TIER_COLORS[tier] ?? '#71717A';
+  }
+
+  ageColor(minutes: number): string {
+    return ageColor(minutes);
+  }
+
+  fmtAge(minutes: number): string {
+    return fmtAge(minutes);
+  }
+
+  rowKey(row: Row): string {
+    return `${row.data.buyOrderId}-${row.data.sellOrderId}`;
+  }
+
+  profitColor(tier: ProfitTier): string {
+    switch (tier) {
+      case 'top':  return 'var(--color-profit-strong)';
+      case 'high': return 'var(--color-profit)';
+      case 'mid':  return 'rgba(34,197,94,0.8)';
+      default:     return 'rgba(34,197,94,0.6)';
+    }
+  }
+
+  profitBg(tier: ProfitTier): string {
+    switch (tier) {
+      case 'top':
+      case 'high': return 'var(--color-profit-dim)';
+      default:     return 'transparent';
+    }
+  }
+
+  profitTierBg(_tier: ProfitTier): string {
+    return 'transparent';
+  }
+
+  borderLeft(row: Row, isSelected: boolean): string {
+    if (isSelected) return '2px solid var(--color-gold)';
+    if (row.totalTier === 'top') return '2px solid var(--color-profit)';
+    return '2px solid transparent';
+  }
+
+  setSort(key: SortKey): void {
+    this.currentPage.set(0);
+    if (this.sortKey() === key) {
+      this.sortChange.emit({ key, direction: this.sortDirection() === 'asc' ? 'desc' : 'asc' });
+      return;
+    }
+    const direction: SortDirection = (key === 'item' || key === 'route') ? 'asc' : 'desc';
+    this.sortChange.emit({ key, direction });
+  }
+
+  prevPage(): void {
+    this.currentPage.update((p) => Math.max(0, p - 1));
+  }
+
+  nextPage(): void {
+    this.currentPage.update((p) => Math.min(this.totalPages() - 1, p + 1));
+  }
+
+  goToPage(page: number): void {
+    this.currentPage.set(page);
+  }
+
+  visiblePageNumbers(): number[] {
+    const total = this.totalPages();
+    const current = this.currentPage();
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i);
+    const pages: number[] = [0];
+    const start = Math.max(1, current - 1);
+    const end = Math.min(total - 2, current + 1);
+    if (start > 1) pages.push(-1);
+    for (let i = start; i <= end; i++) pages.push(i);
+    if (end < total - 2) pages.push(-1);
+    pages.push(total - 1);
+    return pages;
+  }
+
+  private compare(left: FlipOpportunity, right: FlipOpportunity): number {
+    const d = this.sortDirection() === 'asc' ? 1 : -1;
+    switch (this.sortKey()) {
+      case 'item':      return d * left.itemLocalizedName.localeCompare(right.itemLocalizedName);
+      case 'quality':   return d * (left.qualityLevel - right.qualityLevel);
+      case 'buyPrice':  return d * (left.sellPriceSilver - right.sellPriceSilver);
+      case 'route':     return d * left.sourceLocationName.localeCompare(right.sourceLocationName);
+      case 'sellPrice': return d * (left.buyPriceSilver - right.buyPriceSilver);
+      case 'profit':    return d * (left.profitPerItemSilver - right.profitPerItemSilver);
+      case 'qty':       return d * (left.maxTradableAmount - right.maxTradableAmount);
+      case 'freshness': return d * (rowAgeMinutes(left.buyAgeMinutes, left.sellAgeMinutes) - rowAgeMinutes(right.buyAgeMinutes, right.sellAgeMinutes));
+      case 'total':
+      default:          return d * (left.estimatedTotalProfitSilver - right.estimatedTotalProfitSilver);
+    }
+  }
+}

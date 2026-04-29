@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/AlbionMarketCollector.Api/AlbionMarketCollector.Api.csproj" />
     <Project Path="src/AlbionMarketCollector.Application/AlbionMarketCollector.Application.csproj" />
     <Project Path="src/AlbionMarketCollector.Domain/AlbionMarketCollector.Domain.csproj" />
     <Project Path="src/AlbionMarketCollector.Infrastructure/AlbionMarketCollector.Infrastructure.csproj" />
