@@ -17,7 +17,8 @@ public sealed class PostgreSqlBlackMarketFlipQueryServiceTests
             {
                 SourceLocationIds = ["4002", "4301"],
                 SellingLocationIds = ["3003"],
-                Limit = 100,
+                Page = 2,
+                PageSize = 48,
             });
 
         var sql = command.CommandText;
@@ -32,6 +33,9 @@ public sealed class PostgreSqlBlackMarketFlipQueryServiceTests
         Assert.True(orderByIndex > tradableFilterIndex, "The max_tradable_amount alias must be ordered from the outer query.");
         Assert.Contains(command.Parameters, parameter => parameter.ParameterName == "sourceLocationIds");
         Assert.Contains(command.Parameters, parameter => parameter.ParameterName == "sellingLocationIds");
-        Assert.Contains(command.Parameters, parameter => parameter.ParameterName == "limit" && (int)parameter.Value! == 100);
+        Assert.Contains(command.Parameters, parameter => parameter.ParameterName == "pageSize" && (int)parameter.Value! == 48);
+        Assert.Contains(command.Parameters, parameter => parameter.ParameterName == "offset" && (long)parameter.Value! == 48);
+        Assert.Contains("COUNT(*) OVER() AS total_count", sql);
+        Assert.Contains("LIMIT @pageSize OFFSET @offset;", sql);
     }
 }

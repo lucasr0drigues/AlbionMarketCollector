@@ -19,7 +19,7 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
         _schemaInitializer = schemaInitializer;
     }
 
-    public async Task<IReadOnlyList<BlackMarketFlipOpportunity>> FindOpportunitiesAsync(
+    public async Task<BlackMarketFlipPage> FindOpportunitiesAsync(
         BlackMarketFlipQuery query,
         CancellationToken cancellationToken)
     {
@@ -29,9 +29,11 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
 
         var now = DateTimeOffset.UtcNow;
         var results = new List<BlackMarketFlipOpportunity>();
+        long totalCount = 0;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
+            totalCount = reader.GetInt64(17);
             var buyLastSeenAtUtc = PostgreSqlValueReader.GetUtcDateTimeOffset(reader.GetDateTime(11));
             var sellLastSeenAtUtc = PostgreSqlValueReader.GetUtcDateTimeOffset(reader.GetDateTime(15));
             var buyPrice = reader.GetInt64(9);
@@ -69,12 +71,18 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
                 profitPerItem * maxTradableAmount));
         }
 
-        return results;
+        var page = NormalizePage(query.Page);
+        var pageSize = NormalizePageSize(query.PageSize);
+        var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
+        var hasMore = totalCount > (long)page * pageSize;
+        return new BlackMarketFlipPage(results, page, pageSize, totalCount, totalPages, hasMore);
     }
 
     internal static void ConfigureFindOpportunitiesCommand(NpgsqlCommand command, BlackMarketFlipQuery query)
     {
-        var limit = Math.Clamp(query.Limit, 1, 500);
+        var page = NormalizePage(query.Page);
+        var pageSize = NormalizePageSize(query.PageSize);
+        var offset = (long)(page - 1) * pageSize;
         var maxAgeMinutes = query.MaxAgeMinutes is > 0 ? query.MaxAgeMinutes.Value : (int?)null;
         var minProfitSilver = Math.Max(1, query.MinProfitSilver ?? 1);
         var sourceLocationIds = NormalizeList(query.SourceLocationIds);
@@ -83,7 +91,8 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
         var itemUniqueNames = NormalizeList(query.ItemUniqueNames);
 
         command.Parameters.AddWithValue("minProfitSilver", minProfitSilver);
-        command.Parameters.AddWithValue("limit", limit);
+        command.Parameters.AddWithValue("pageSize", pageSize);
+        command.Parameters.AddWithValue("offset", offset);
 
         var buyFilters = new StringBuilder(
             """
@@ -231,14 +240,53 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
                 sell_price_silver,
                 sell_amount,
                 sell_last_seen_at_utc,
-                max_tradable_amount
+                max_tradable_amount,
+                COUNT(*) OVER() AS total_count
             FROM tradable_opportunities
             WHERE max_tradable_amount > 0
             """);
 
-        sql.AppendLine("ORDER BY (buy_price_silver - sell_price_silver) * max_tradable_amount DESC, buy_price_silver - sell_price_silver DESC");
-        sql.AppendLine("LIMIT @limit;");
+        if (query.MinTotalProfitSilver is { } minTotalProfitSilver)
+        {
+            sql.AppendLine("AND (buy_price_silver - sell_price_silver) * max_tradable_amount >= @minTotalProfitSilver");
+            command.Parameters.AddWithValue("minTotalProfitSilver", Math.Max(0, minTotalProfitSilver));
+        }
+
+        sql.AppendLine(BuildOrderBy(query.SortBy, query.SortDirection));
+        sql.AppendLine("LIMIT @pageSize OFFSET @offset;");
         command.CommandText = sql.ToString();
+    }
+
+    private static int NormalizePage(int page)
+    {
+        return Math.Max(1, page);
+    }
+
+    private static int NormalizePageSize(int pageSize)
+    {
+        return Math.Clamp(pageSize, 1, 48);
+    }
+
+    private static string BuildOrderBy(string? sortBy, string? sortDirection)
+    {
+        var normalizedSort = sortBy?.Trim().ToLowerInvariant();
+        var descending = !string.Equals(sortDirection, "asc", StringComparison.OrdinalIgnoreCase);
+        var direction = descending ? "DESC" : "ASC";
+        var freshnessDirection = descending ? "ASC" : "DESC";
+        var primary = normalizedSort switch
+        {
+            "item" => $"item_localized_name {direction}, item_type_id {direction}",
+            "quality" => $"sell_quality_level {direction}, enchantment_level {direction}",
+            "buyprice" => $"sell_price_silver {direction}",
+            "route" => $"source_location_name {direction}, selling_location_name {direction}",
+            "sellprice" => $"buy_price_silver {direction}",
+            "profit" => $"(buy_price_silver - sell_price_silver) {direction}",
+            "qty" => $"max_tradable_amount {direction}",
+            "freshness" => $"LEAST(buy_last_seen_at_utc, sell_last_seen_at_utc) {freshnessDirection}",
+            _ => $"(buy_price_silver - sell_price_silver) * max_tradable_amount {direction}",
+        };
+
+        return $"ORDER BY {primary}, (buy_price_silver - sell_price_silver) * max_tradable_amount DESC, buy_price_silver - sell_price_silver DESC, buy_last_seen_at_utc DESC, buy_order_id";
     }
 
     private static void AppendOptionalFilters(

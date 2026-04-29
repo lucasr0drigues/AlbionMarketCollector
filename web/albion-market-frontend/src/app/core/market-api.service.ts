@@ -1,7 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
-import { ClearMarketOrdersResult, FlipFilters, FlipOpportunity, ItemSearchResult } from './models';
+import { ClearMarketOrdersResult, FlipFilters, FlipOpportunityPage, ItemSearchResult } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class MarketApiService {
@@ -9,8 +9,10 @@ export class MarketApiService {
 
   constructor(private readonly http: HttpClient) {}
 
-  findBlackMarketFlips(filters: FlipFilters): Observable<FlipOpportunity[]> {
-    let params = new HttpParams().set('limit', filters.limit);
+  findBlackMarketFlips(filters: FlipFilters): Observable<FlipOpportunityPage> {
+    let params = new HttpParams()
+      .set('page', filters.page)
+      .set('pageSize', filters.pageSize);
 
     for (const locationId of filters.sourceLocationIds ?? []) {
       params = params.append('sourceLocationIds', locationId);
@@ -28,6 +30,9 @@ export class MarketApiService {
     if (filters.minProfitSilver != null) {
       params = params.set('minProfitSilver', filters.minProfitSilver);
     }
+    if (filters.minTotalProfitSilver != null) {
+      params = params.set('minTotalProfitSilver', filters.minTotalProfitSilver);
+    }
     if (filters.minProfitPercent != null) {
       params = params.set('minProfitPercent', filters.minProfitPercent);
     }
@@ -42,8 +47,14 @@ export class MarketApiService {
     if (filters.enchantmentLevel != null) {
       params = params.set('enchantmentLevel', filters.enchantmentLevel);
     }
+    if (filters.sortBy) {
+      params = params.set('sortBy', filters.sortBy);
+    }
+    if (filters.sortDirection) {
+      params = params.set('sortDirection', filters.sortDirection);
+    }
 
-    return this.http.get<FlipOpportunity[]>(`${this.apiBaseUrl}/flips/black-market`, { params });
+    return this.http.get<FlipOpportunityPage>(`${this.apiBaseUrl}/flips/black-market`, { params });
   }
 
   searchItems(search: string, limit = 20): Observable<ItemSearchResult[]> {

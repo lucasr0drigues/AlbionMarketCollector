@@ -4,7 +4,7 @@ namespace AlbionMarketCollector.Application.Contracts;
 
 public interface IBlackMarketFlipQueryService
 {
-    Task<IReadOnlyList<BlackMarketFlipOpportunity>> FindOpportunitiesAsync(
+    Task<BlackMarketFlipPage> FindOpportunitiesAsync(
         BlackMarketFlipQuery query,
         CancellationToken cancellationToken);
 }

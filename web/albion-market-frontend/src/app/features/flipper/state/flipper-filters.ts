@@ -9,9 +9,10 @@ export interface FlipperFilters {
   minTotalProfitSilver: number | null;
   qualityLevel: number | null;
   enchantmentLevel: number | null;
-  limit: number;
   items: ItemSearchResult[];
 }
+
+export const FLIPPER_PAGE_SIZE = 48;
 
 export const DEFAULT_FILTERS: FlipperFilters = {
   sourceKeys: ['fort-sterling'],
@@ -22,7 +23,6 @@ export const DEFAULT_FILTERS: FlipperFilters = {
   minTotalProfitSilver: null,
   qualityLevel: null,
   enchantmentLevel: null,
-  limit: 100,
   items: [],
 };
 
@@ -31,14 +31,6 @@ export const QUICK_AGE_PRESETS: Array<{ label: string; value: number | null }> =
   { label: '1h', value: 60 },
   { label: '6h', value: 360 },
   { label: '24h', value: 1440 },
-  { label: 'Any', value: null },
-];
-
-export const QUICK_PROFIT_PERCENT_PRESETS: Array<{ label: string; value: number | null }> = [
-  { label: '10%', value: 10 },
-  { label: '25%', value: 25 },
-  { label: '50%', value: 50 },
-  { label: '100%', value: 100 },
   { label: 'Any', value: null },
 ];
 

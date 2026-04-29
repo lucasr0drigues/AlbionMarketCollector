@@ -24,12 +24,16 @@ public sealed class BlackMarketFlipsController : ControllerBase
         [FromQuery] string? blackMarketLocationId,
         [FromQuery] int? maxAgeMinutes = null,
         [FromQuery] long? minProfitSilver = null,
+        [FromQuery] long? minTotalProfitSilver = null,
         [FromQuery] decimal? minProfitPercent = null,
         [FromQuery] string? itemSearch = null,
         [FromQuery] string[]? itemUniqueNames = null,
         [FromQuery] int? qualityLevel = null,
         [FromQuery] int? enchantmentLevel = null,
-        [FromQuery] int limit = 100,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortDirection = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 48,
         CancellationToken cancellationToken = default)
     {
         var normalizedSourceLocationIds = NormalizeValues(sourceLocationIds);
@@ -53,12 +57,16 @@ public sealed class BlackMarketFlipsController : ControllerBase
                     SellingLocationIds = normalizedSellingLocationIds.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
                     MaxAgeMinutes = maxAgeMinutes,
                     MinProfitSilver = minProfitSilver,
+                    MinTotalProfitSilver = minTotalProfitSilver,
                     MinProfitPercent = minProfitPercent,
                     ItemSearch = itemSearch,
                     ItemUniqueNames = NormalizeValues(itemUniqueNames).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
                     QualityLevel = qualityLevel,
                     EnchantmentLevel = enchantmentLevel,
-                    Limit = limit,
+                    SortBy = sortBy,
+                    SortDirection = sortDirection,
+                    Page = page,
+                    PageSize = pageSize,
                 },
                 cancellationToken)
             .ConfigureAwait(false);

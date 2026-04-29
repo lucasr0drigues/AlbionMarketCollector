@@ -14,14 +14,6 @@ const AGE_OPTIONS: Array<{ label: string; value: number | null }> = [
   { label: 'Any', value: null },
 ];
 
-const PROFIT_PCT_OPTIONS: Array<{ label: string; value: number | null }> = [
-  { label: '10%', value: 10 },
-  { label: '25%', value: 25 },
-  { label: '50%', value: 50 },
-  { label: '100%', value: 100 },
-  { label: 'Any', value: null },
-];
-
 @Component({
   selector: 'app-flipper-filter-bar',
   standalone: true,
@@ -83,27 +75,6 @@ const PROFIT_PCT_OPTIONS: Array<{ label: string; value: number | null }> = [
         <!-- Divider -->
         <div style="width:1px;height:44px;background:var(--color-border);flex-shrink:0;"></div>
 
-        <!-- Min Profit % chips -->
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          <span style="font-size:11px;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">Min Profit %</span>
-          <div style="display:flex;gap:3px;">
-            @for (opt of profitPctOptions; track opt.label) {
-              <button
-                type="button"
-                (click)="patch({ minProfitPercent: opt.value })"
-                [style.border-color]="pctEqual(opt.value) ? 'rgba(214,168,79,0.3)' : 'var(--color-border)'"
-                [style.background]="pctEqual(opt.value) ? 'var(--color-gold-dim)' : 'transparent'"
-                [style.color]="pctEqual(opt.value) ? 'var(--color-gold)' : 'var(--color-text-muted)'"
-                [style.font-weight]="pctEqual(opt.value) ? '600' : '400'"
-                style="padding:4px 10px;border-radius:6px;border:1px solid;font-size:11px;cursor:pointer;transition:all 0.12s;white-space:nowrap;"
-              >{{ opt.label }}</button>
-            }
-          </div>
-        </div>
-
-        <!-- Divider -->
-        <div style="width:1px;height:44px;background:var(--color-border);flex-shrink:0;"></div>
-
         <!-- Item search -->
         <div style="min-width:180px;">
           <app-item-multiselect
@@ -131,6 +102,9 @@ const PROFIT_PCT_OPTIONS: Array<{ label: string; value: number | null }> = [
           />
         </div>
 
+        <!-- Divider -->
+        <div style="width:1px;height:44px;background:var(--color-border);flex-shrink:0;"></div>
+
         <!-- Min % Profit / Unit -->
         <div style="display:flex;flex-direction:column;gap:4px;min-width:130px;">
           <span style="font-size:11px;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">Min % Profit / Unit</span>
@@ -146,6 +120,9 @@ const PROFIT_PCT_OPTIONS: Array<{ label: string; value: number | null }> = [
             onblur="this.style.borderColor='var(--color-border-strong)';"
           />
         </div>
+
+        <!-- Divider -->
+        <div style="width:1px;height:44px;background:var(--color-border);flex-shrink:0;"></div>
 
         <button
           type="button"
@@ -248,7 +225,6 @@ export class FlipperFilterBarComponent {
   @Output() readonly filtersChange = new EventEmitter<FlipperFilters>();
 
   readonly ageOptions = AGE_OPTIONS;
-  readonly profitPctOptions = PROFIT_PCT_OPTIONS;
   readonly qualityOptions = QUALITY_OPTIONS;
   readonly enchantmentOptions = ENCHANTMENT_OPTIONS;
   readonly showAdvancedFilters = signal(false);
@@ -271,10 +247,6 @@ export class FlipperFilterBarComponent {
 
   ageEqual(value: number | null): boolean {
     return this.filters().maxAgeMinutes === value;
-  }
-
-  pctEqual(value: number | null): boolean {
-    return this.filters().minProfitPercent === value;
   }
 
   qualityEqual(value: number | null): boolean {

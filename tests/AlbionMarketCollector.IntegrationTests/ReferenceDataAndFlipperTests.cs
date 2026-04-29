@@ -237,11 +237,11 @@ public sealed class ReferenceDataAndFlipperTests
                     ItemUniqueNames = [itemUniqueName],
                     MaxAgeMinutes = 60,
                     MinProfitSilver = 1,
-                    Limit = 10,
+                    PageSize = 10,
                 },
                 CancellationToken.None);
 
-            var opportunity = Assert.Single(opportunities);
+            var opportunity = Assert.Single(opportunities.Items);
             Assert.Equal(itemUniqueName, opportunity.ItemUniqueName);
             Assert.Equal(secondSourceLocationId, opportunity.SourceLocationId);
             Assert.Equal(500, opportunity.ProfitPerItemSilver);
@@ -255,11 +255,11 @@ public sealed class ReferenceDataAndFlipperTests
                     ItemUniqueNames = [itemUniqueName],
                     QualityLevel = 1,
                     EnchantmentLevel = 0,
-                    Limit = 10,
+                    PageSize = 10,
                 },
                 CancellationToken.None);
 
-            Assert.Single(optionalFilterOpportunities);
+            Assert.Single(optionalFilterOpportunities.Items);
 
             var wrongQualityOpportunities = await flipQueries.FindOpportunitiesAsync(
                 new BlackMarketFlipQuery
@@ -268,11 +268,11 @@ public sealed class ReferenceDataAndFlipperTests
                     ItemUniqueNames = [itemUniqueName],
                     QualityLevel = 2,
                     EnchantmentLevel = 0,
-                    Limit = 10,
+                    PageSize = 10,
                 },
                 CancellationToken.None);
 
-            Assert.Empty(wrongQualityOpportunities);
+            Assert.Empty(wrongQualityOpportunities.Items);
 
             var higherQualityOpportunities = await flipQueries.FindOpportunitiesAsync(
                 new BlackMarketFlipQuery
@@ -282,11 +282,11 @@ public sealed class ReferenceDataAndFlipperTests
                     ItemUniqueNames = [higherQualityItemUniqueName],
                     QualityLevel = 2,
                     EnchantmentLevel = 0,
-                    Limit = 10,
+                    PageSize = 10,
                 },
                 CancellationToken.None);
 
-            var higherQualityOpportunity = Assert.Single(higherQualityOpportunities);
+            var higherQualityOpportunity = Assert.Single(higherQualityOpportunities.Items);
             Assert.Equal(higherQualityItemUniqueName, higherQualityOpportunity.ItemUniqueName);
             Assert.Equal(4, higherQualityOpportunity.QualityLevel);
             Assert.Equal(1_000, higherQualityOpportunity.ProfitPerItemSilver);
@@ -297,11 +297,11 @@ public sealed class ReferenceDataAndFlipperTests
                     SourceLocationIds = [sourceLocationId],
                     SellingLocationIds = [blackMarketLocationId],
                     ItemUniqueNames = [allocationItemUniqueName],
-                    Limit = 10,
+                    PageSize = 10,
                 },
                 CancellationToken.None);
 
-            var allocatedOpportunity = Assert.Single(allocatedOpportunities);
+            var allocatedOpportunity = Assert.Single(allocatedOpportunities.Items);
             Assert.Equal(buyOrderId + 11, allocatedOpportunity.BuyOrderId);
             Assert.Equal(1_000, allocatedOpportunity.ProfitPerItemSilver);
             Assert.Equal(1, allocatedOpportunity.MaxTradableAmount);
@@ -312,11 +312,11 @@ public sealed class ReferenceDataAndFlipperTests
                     SourceLocationIds = [sourceLocationId],
                     SellingLocationIds = [blackMarketLocationId],
                     ItemUniqueNames = [expiredItemUniqueName],
-                    Limit = 10,
+                    PageSize = 10,
                 },
                 CancellationToken.None);
 
-            Assert.Empty(expiredOpportunities);
+            Assert.Empty(expiredOpportunities.Items);
         }
         finally
         {

@@ -23,17 +23,30 @@ export interface FlipOpportunity {
   estimatedTotalProfitSilver: number;
 }
 
+export interface FlipOpportunityPage {
+  items: FlipOpportunity[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  hasMore: boolean;
+}
+
 export interface FlipFilters {
   sourceLocationIds: string[];
   excludedSourceLocationIds?: string[];
   sellingLocationIds: string[];
   maxAgeMinutes?: number | null;
   minProfitSilver?: number | null;
+  minTotalProfitSilver?: number | null;
   minProfitPercent?: number | null;
   itemUniqueNames?: string[];
   qualityLevel?: number | null;
   enchantmentLevel?: number | null;
-  limit: number;
+  sortBy?: string | null;
+  sortDirection?: 'asc' | 'desc';
+  page: number;
+  pageSize: number;
 }
 
 export interface ItemSearchResult {

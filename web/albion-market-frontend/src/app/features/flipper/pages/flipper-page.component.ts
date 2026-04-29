@@ -13,8 +13,8 @@ import { LoadingStateComponent } from '../../../shared/ui/loading-state.componen
 import { StatCardComponent } from '../../../shared/ui/stat-card.component';
 import { SilverPipe } from '../../../core/formatting/silver.pipe';
 import { MarketApiService } from '../../../core/market-api.service';
-import { FlipFilters, FlipOpportunity } from '../../../core/models';
-import { FlipperFilters, DEFAULT_FILTERS } from '../state/flipper-filters';
+import { FlipFilters, FlipOpportunity, FlipOpportunityPage } from '../../../core/models';
+import { FlipperFilters, DEFAULT_FILTERS, FLIPPER_PAGE_SIZE } from '../state/flipper-filters';
 import { rowAgeMinutes } from '../../../core/domain/freshness';
 import { flattenLocationIds, SOURCE_LOCATIONS, SELLING_LOCATIONS } from '../../../core/domain/locations';
 
@@ -78,7 +78,7 @@ import { flattenLocationIds, SOURCE_LOCATIONS, SELLING_LOCATIONS } from '../../.
           } @else if (filteredOpportunities().length === 0) {
             <ui-empty-state
               title="No flips match these filters"
-              description="Try widening Max age, lowering Min profit %, or removing item and profit filters."
+              description="Try widening Max age, lowering Min total profit, lowering Min % profit/unit, or removing item filters."
             />
           } @else {
             <app-opportunity-table
@@ -86,8 +86,14 @@ import { flattenLocationIds, SOURCE_LOCATIONS, SELLING_LOCATIONS } from '../../.
               [selected]="selected()"
               [sortKey]="sortKey()"
               [sortDirection]="sortDirection()"
+              [page]="page()"
+              [pageSize]="pageSize"
+              [totalCount]="totalCount()"
+              [totalPages]="totalPages()"
+              [hasMore]="hasMore()"
               (rowClick)="select($event)"
               (sortChange)="onSortChange($event)"
+              (pageChange)="goToPage($event)"
               (visibleCountChange)="visibleCount.set($event)"
             />
           }
@@ -120,15 +126,16 @@ export class FlipperPageComponent implements OnDestroy {
   readonly sortKey = signal<SortKey>('total');
   readonly sortDirection = signal<SortDirection>('desc');
   readonly visibleCount = signal(0);
+  readonly page = signal(1);
+  readonly pageSize = FLIPPER_PAGE_SIZE;
+  readonly totalCount = signal(0);
+  readonly totalPages = signal(0);
+  readonly hasMore = signal(false);
 
   readonly closeDetailsFn = () => this.closeDetails();
 
   readonly filteredOpportunities = computed(() => {
-    const all = this.opportunities();
-    const minTotal = this.filters().minTotalProfitSilver;
-    if (minTotal == null || !Number.isFinite(minTotal)) return all;
-    const threshold = minTotal * 10_000;
-    return all.filter((o) => o.estimatedTotalProfitSilver >= threshold);
+    return this.opportunities();
   });
 
   readonly freshestAge = computed(() => {
@@ -157,7 +164,7 @@ export class FlipperPageComponent implements OnDestroy {
           return this.api.findBlackMarketFlips(apiFilters).pipe(
             catchError((err) => {
               this.error.set(this.toMessage(err));
-              return of([] as FlipOpportunity[]);
+              return of(emptyFlipPage(apiFilters.page, apiFilters.pageSize));
             }),
             finalize(() => this.loading.set(false)),
           );
@@ -166,21 +173,34 @@ export class FlipperPageComponent implements OnDestroy {
       )
       .subscribe((data) => {
         const selected = this.selected();
-        this.opportunities.set(data);
+        this.opportunities.set(data.items);
+        this.totalCount.set(data.totalCount);
+        this.totalPages.set(data.totalPages);
+        this.hasMore.set(data.hasMore);
         if (selected) {
-          this.selected.set(data.find((item) => sameOpportunity(item, selected)) ?? null);
+          this.selected.set(data.items.find((item) => sameOpportunity(item, selected)) ?? null);
         }
       });
 
     effect(() => {
       const filters = this.filters();
+      const page = this.page();
+      const sortKey = this.sortKey();
+      const sortDirection = this.sortDirection();
       saveFiltersToUrl(filters);
-      this.fetchTrigger$.next(toApiFilters(filters));
+      this.fetchTrigger$.next(toApiFilters(filters, page, this.pageSize, sortKey, sortDirection));
     });
   }
 
-  updateFilters(next: FlipperFilters): void { this.filters.set(next); }
-  reload(): void { this.fetchTrigger$.next(toApiFilters(this.filters())); }
+  updateFilters(next: FlipperFilters): void {
+    this.page.set(1);
+    this.filters.set(next);
+  }
+
+  reload(): void {
+    this.fetchTrigger$.next(toApiFilters(this.filters(), this.page(), this.pageSize, this.sortKey(), this.sortDirection()));
+  }
+
   select(opportunity: FlipOpportunity): void { this.selected.set(opportunity); }
   closeDetails(): void { this.selected.set(null); }
 
@@ -212,8 +232,13 @@ export class FlipperPageComponent implements OnDestroy {
   }
 
   onSortChange(event: { key: SortKey; direction: SortDirection }): void {
+    this.page.set(1);
     this.sortKey.set(event.key);
     this.sortDirection.set(event.direction);
+  }
+
+  goToPage(page: number): void {
+    this.page.set(Math.max(1, page));
   }
 
   private toMessage(err: unknown): string {
@@ -255,18 +280,28 @@ function sameOpportunity(left: FlipOpportunity, right: FlipOpportunity): boolean
     left.itemUniqueName === right.itemUniqueName;
 }
 
-function toApiFilters(filters: FlipperFilters): FlipFilters {
+function toApiFilters(
+  filters: FlipperFilters,
+  page: number,
+  pageSize: number,
+  sortBy: SortKey,
+  sortDirection: SortDirection,
+): FlipFilters {
   return {
     sourceLocationIds: flattenLocationIds(SOURCE_LOCATIONS, filters.sourceKeys),
     excludedSourceLocationIds: filters.sourceKeys.length === 0 ? ['3003'] : [],
     sellingLocationIds: flattenLocationIds(SELLING_LOCATIONS, filters.sellingKeys),
     maxAgeMinutes: filters.maxAgeMinutes,
     minProfitSilver: filters.minProfitSilver,
+    minTotalProfitSilver: toStoredSilver(filters.minTotalProfitSilver),
     minProfitPercent: filters.minProfitPercent,
     itemUniqueNames: filters.items.map((i) => i.uniqueName),
     qualityLevel: filters.qualityLevel,
     enchantmentLevel: filters.enchantmentLevel,
-    limit: filters.limit,
+    sortBy,
+    sortDirection,
+    page,
+    pageSize,
   };
 }
 
@@ -281,7 +316,6 @@ function saveFiltersToUrl(filters: FlipperFilters): void {
   if (filters.minTotalProfitSilver != null) params.set('mintotal', String(filters.minTotalProfitSilver));
   if (filters.qualityLevel != null) params.set('q', String(filters.qualityLevel));
   if (filters.enchantmentLevel != null) params.set('e', String(filters.enchantmentLevel));
-  if (filters.limit !== DEFAULT_FILTERS.limit) params.set('limit', String(filters.limit));
   if (filters.items.length > 0) params.set('items', filters.items.map((i) => i.uniqueName).join(','));
   const search = params.toString();
   window.history.replaceState({}, '', search ? `?${search}` : window.location.pathname);
@@ -300,8 +334,26 @@ function loadFiltersFromUrl(): FlipperFilters | null {
     minTotalProfitSilver: parseNumber(params.get('mintotal')),
     qualityLevel: parseNumber(params.get('q')),
     enchantmentLevel: parseNumber(params.get('e')),
-    limit: parseNumber(params.get('limit')) ?? DEFAULT_FILTERS.limit,
     items: parseList(params.get('items'))?.map((uniqueName) => ({ id: 0, uniqueName, localizedName: uniqueName })) ?? [],
+  };
+}
+
+function toStoredSilver(value: number | null): number | null {
+  if (value === null || !Number.isFinite(value)) {
+    return null;
+  }
+
+  return Math.round(value * 10_000);
+}
+
+function emptyFlipPage(page: number, pageSize: number): FlipOpportunityPage {
+  return {
+    items: [],
+    page,
+    pageSize,
+    totalCount: 0,
+    totalPages: 0,
+    hasMore: false,
   };
 }
 

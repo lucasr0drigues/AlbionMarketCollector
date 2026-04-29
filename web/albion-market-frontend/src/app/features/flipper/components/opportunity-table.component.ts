@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Output, computed, effect, input, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Output, computed, effect, input } from '@angular/core';
 import { FlipOpportunity } from '../../../core/models';
 import { SilverPipe } from '../../../core/formatting/silver.pipe';
 import { rowAgeMinutes } from '../../../core/domain/freshness';
@@ -57,8 +57,6 @@ const COLS: Array<{ key: SortKey | null; label: string; align: 'left' | 'right' 
   { key: 'freshness', label: 'AGE',            align: 'right' },
   { key: null,        label: '',               align: 'center' },
 ];
-
-const PAGE_SIZE = 48;
 
 @Component({
   selector: 'app-opportunity-table',
@@ -310,27 +308,27 @@ const PAGE_SIZE = 48;
       @if (totalPages() > 1) {
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 16px;border-top:1px solid var(--color-border);background:var(--color-surface-2);flex-shrink:0;">
           <span class="mono" style="font-size:11px;color:var(--color-text-muted);">
-            {{ pageStart() }}–{{ pageEnd() }} of {{ allRows().length }}
+            {{ pageStart() }}–{{ pageEnd() }} of {{ totalCount() }}
           </span>
           <div style="display:flex;align-items:center;gap:2px;">
-            <button type="button" (click)="prevPage()" [disabled]="currentPage() === 0" class="pager-button">
+            <button type="button" (click)="prevPage()" [disabled]="page() <= 1" class="pager-button">
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M8 3L4 7l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
 
-            @for (page of visiblePageNumbers(); track $index) {
-              @if (page === -1) {
+            @for (pageNumber of visiblePageNumbers(); track $index) {
+              @if (pageNumber === -1) {
                 <span style="width:28px;text-align:center;font-size:12px;color:var(--color-text-faint);">…</span>
               } @else {
                 <button
                   type="button"
-                  (click)="goToPage(page)"
+                  (click)="goToPage(pageNumber)"
                   class="pager-button"
-                  [class.pager-button-active]="currentPage() === page"
-                >{{ page + 1 }}</button>
+                  [class.pager-button-active]="page() === pageNumber"
+                >{{ pageNumber }}</button>
               }
             }
 
-            <button type="button" (click)="nextPage()" [disabled]="currentPage() === totalPages() - 1" class="pager-button">
+            <button type="button" (click)="nextPage()" [disabled]="!hasMore()" class="pager-button">
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M6 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
           </div>
@@ -343,22 +341,21 @@ export class OpportunityTableComponent {
   readonly selected = input<FlipOpportunity | null>(null);
   readonly sortKey = input<SortKey>('total');
   readonly sortDirection = input<SortDirection>('desc');
+  readonly page = input(1);
+  readonly pageSize = input(48);
+  readonly totalCount = input(0);
+  readonly totalPages = input(0);
+  readonly hasMore = input(false);
 
   @Output() readonly rowClick = new EventEmitter<FlipOpportunity>();
   @Output() readonly sortChange = new EventEmitter<{ key: SortKey; direction: SortDirection }>();
+  @Output() readonly pageChange = new EventEmitter<number>();
   @Output() readonly visibleCountChange = new EventEmitter<number>();
 
   readonly colGrid = COL_GRID;
   readonly cols = COLS;
 
-  readonly currentPage = signal(0);
-
   constructor() {
-    effect(() => {
-      this.opportunities();
-      untracked(() => this.currentPage.set(0));
-    }, { allowSignalWrites: true });
-
     effect(() => {
       this.visibleCountChange.emit(this.rows().length);
     });
@@ -366,10 +363,9 @@ export class OpportunityTableComponent {
 
   readonly allRows = computed<Row[]>(() => {
     const data = this.opportunities();
-    const sorted = [...data].sort((a, b) => this.compare(a, b));
     const profitTiers = buildProfitTierMap(data, (r) => r.profitPerItemSilver);
     const totalTiers = buildProfitTierMap(data, (r) => r.estimatedTotalProfitSilver);
-    return sorted.map<Row>((d) => {
+    return data.map<Row>((d) => {
       const q = qualityMeta(d.qualityLevel);
       const isBlackMarket = d.sellingLocationId === '3003' || d.sellingLocationName?.toLowerCase().includes('black market');
       return {
@@ -390,15 +386,10 @@ export class OpportunityTableComponent {
     });
   });
 
-  readonly rows = computed<Row[]>(() => {
-    const all = this.allRows();
-    const page = this.currentPage();
-    return all.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-  });
+  readonly rows = computed<Row[]>(() => this.allRows());
 
-  readonly totalPages = computed(() => Math.ceil(this.allRows().length / PAGE_SIZE));
-  readonly pageStart = computed(() => this.currentPage() * PAGE_SIZE + 1);
-  readonly pageEnd = computed(() => Math.min((this.currentPage() + 1) * PAGE_SIZE, this.allRows().length));
+  readonly pageStart = computed(() => this.totalCount() === 0 ? 0 : (this.page() - 1) * this.pageSize() + 1);
+  readonly pageEnd = computed(() => Math.min(this.page() * this.pageSize(), this.totalCount()));
 
   readonly totalBuyValue = computed(() => this.opportunities().reduce((s, o) => s + o.sellPriceSilver * o.maxTradableAmount, 0));
   readonly totalProfit = computed(() => this.opportunities().reduce((s, o) => s + o.estimatedTotalProfitSilver, 0));
@@ -456,7 +447,6 @@ export class OpportunityTableComponent {
   }
 
   setSort(key: SortKey): void {
-    this.currentPage.set(0);
     if (this.sortKey() === key) {
       this.sortChange.emit({ key, direction: this.sortDirection() === 'asc' ? 'desc' : 'asc' });
       return;
@@ -466,73 +456,30 @@ export class OpportunityTableComponent {
   }
 
   prevPage(): void {
-    this.currentPage.update((p) => Math.max(0, p - 1));
+    this.pageChange.emit(Math.max(1, this.page() - 1));
   }
 
   nextPage(): void {
-    this.currentPage.update((p) => Math.min(this.totalPages() - 1, p + 1));
+    if (this.hasMore()) {
+      this.pageChange.emit(this.page() + 1);
+    }
   }
 
   goToPage(page: number): void {
-    this.currentPage.set(page);
+    this.pageChange.emit(Math.max(1, page));
   }
 
   visiblePageNumbers(): number[] {
     const total = this.totalPages();
-    const current = this.currentPage();
-    if (total <= 7) return Array.from({ length: total }, (_, i) => i);
-    const pages: number[] = [0];
-    const start = Math.max(1, current - 1);
-    const end = Math.min(total - 2, current + 1);
-    if (start > 1) pages.push(-1);
+    const current = this.page();
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+    const pages: number[] = [1];
+    const start = Math.max(2, current - 1);
+    const end = Math.min(total - 1, current + 1);
+    if (start > 2) pages.push(-1);
     for (let i = start; i <= end; i++) pages.push(i);
-    if (end < total - 2) pages.push(-1);
-    pages.push(total - 1);
+    if (end < total - 1) pages.push(-1);
+    pages.push(total);
     return pages;
-  }
-
-  private compare(left: FlipOpportunity, right: FlipOpportunity): number {
-    const d = this.sortDirection() === 'asc' ? 1 : -1;
-    let result = 0;
-    switch (this.sortKey()) {
-      case 'item':
-        result = left.itemLocalizedName.localeCompare(right.itemLocalizedName);
-        break;
-      case 'quality':
-        result = (left.qualityLevel - right.qualityLevel) || (left.enchantmentLevel - right.enchantmentLevel);
-        break;
-      case 'buyPrice':
-        result = left.sellPriceSilver - right.sellPriceSilver;
-        break;
-      case 'route':
-        result = `${left.sourceLocationName}|${left.sellingLocationName}`.localeCompare(`${right.sourceLocationName}|${right.sellingLocationName}`);
-        break;
-      case 'sellPrice':
-        result = left.buyPriceSilver - right.buyPriceSilver;
-        break;
-      case 'profit':
-        result = left.profitPerItemSilver - right.profitPerItemSilver;
-        break;
-      case 'qty':
-        result = left.maxTradableAmount - right.maxTradableAmount;
-        break;
-      case 'freshness':
-        result = rowAgeMinutes(left.buyAgeMinutes, left.sellAgeMinutes) - rowAgeMinutes(right.buyAgeMinutes, right.sellAgeMinutes);
-        break;
-      case 'total':
-      default:
-        result = left.estimatedTotalProfitSilver - right.estimatedTotalProfitSilver;
-        break;
-    }
-
-    if (result !== 0) {
-      return d * result;
-    }
-
-    return this.opportunityKey(left).localeCompare(this.opportunityKey(right));
-  }
-
-  private opportunityKey(value: FlipOpportunity): string {
-    return `${value.itemUniqueName}|${value.sourceLocationId}|${value.sellingLocationId}|${value.sellOrderId}|${value.buyOrderId}`;
   }
 }

@@ -12,6 +12,8 @@ public sealed class BlackMarketFlipQuery
 
     public long? MinProfitSilver { get; init; }
 
+    public long? MinTotalProfitSilver { get; init; }
+
     public decimal? MinProfitPercent { get; init; }
 
     public string? ItemSearch { get; init; }
@@ -22,5 +24,11 @@ public sealed class BlackMarketFlipQuery
 
     public int? EnchantmentLevel { get; init; }
 
-    public int Limit { get; init; } = 100;
+    public string? SortBy { get; init; }
+
+    public string? SortDirection { get; init; }
+
+    public int Page { get; init; } = 1;
+
+    public int PageSize { get; init; } = 48;
 }
