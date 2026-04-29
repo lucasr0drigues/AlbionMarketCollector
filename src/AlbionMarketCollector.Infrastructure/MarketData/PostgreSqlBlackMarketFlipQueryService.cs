@@ -24,6 +24,56 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
         CancellationToken cancellationToken)
     {
         await _schemaInitializer.EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = _dataSource.CreateCommand();
+        ConfigureFindOpportunitiesCommand(command, query);
+
+        var now = DateTimeOffset.UtcNow;
+        var results = new List<BlackMarketFlipOpportunity>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var buyLastSeenAtUtc = PostgreSqlValueReader.GetUtcDateTimeOffset(reader.GetDateTime(11));
+            var sellLastSeenAtUtc = PostgreSqlValueReader.GetUtcDateTimeOffset(reader.GetDateTime(15));
+            var buyPrice = reader.GetInt64(9);
+            var buyAmount = reader.GetInt64(10);
+            var sellPrice = reader.GetInt64(13);
+            var sellAmount = reader.GetInt64(14);
+            var maxTradableAmount = reader.GetInt64(16);
+            var profitPerItem = buyPrice - sellPrice;
+            var profitPercent = sellPrice == 0
+                ? 0
+                : Math.Round((decimal)profitPerItem / sellPrice * 100, 2);
+
+            results.Add(new BlackMarketFlipOpportunity(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetInt32(2),
+                reader.GetInt32(3),
+                reader.GetString(4),
+                reader.GetString(5),
+                reader.GetString(6),
+                reader.GetString(7),
+                reader.GetInt64(8),
+                buyPrice,
+                buyAmount,
+                buyLastSeenAtUtc,
+                Math.Max(0, (now - buyLastSeenAtUtc).TotalMinutes),
+                reader.GetInt64(12),
+                sellPrice,
+                sellAmount,
+                sellLastSeenAtUtc,
+                Math.Max(0, (now - sellLastSeenAtUtc).TotalMinutes),
+                maxTradableAmount,
+                profitPerItem,
+                profitPercent,
+                profitPerItem * maxTradableAmount));
+        }
+
+        return results;
+    }
+
+    internal static void ConfigureFindOpportunitiesCommand(NpgsqlCommand command, BlackMarketFlipQuery query)
+    {
         var limit = Math.Clamp(query.Limit, 1, 500);
         var maxAgeMinutes = query.MaxAgeMinutes is > 0 ? query.MaxAgeMinutes.Value : (int?)null;
         var minProfitSilver = Math.Max(1, query.MinProfitSilver ?? 1);
@@ -32,7 +82,6 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
         var sellingLocationIds = NormalizeList(query.SellingLocationIds);
         var itemUniqueNames = NormalizeList(query.ItemUniqueNames);
 
-        await using var command = _dataSource.CreateCommand();
         command.Parameters.AddWithValue("minProfitSilver", minProfitSilver);
         command.Parameters.AddWithValue("limit", limit);
 
@@ -190,50 +239,6 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
         sql.AppendLine("ORDER BY (buy_price_silver - sell_price_silver) * max_tradable_amount DESC, buy_price_silver - sell_price_silver DESC");
         sql.AppendLine("LIMIT @limit;");
         command.CommandText = sql.ToString();
-
-        var now = DateTimeOffset.UtcNow;
-        var results = new List<BlackMarketFlipOpportunity>();
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-        {
-            var buyLastSeenAtUtc = PostgreSqlValueReader.GetUtcDateTimeOffset(reader.GetDateTime(11));
-            var sellLastSeenAtUtc = PostgreSqlValueReader.GetUtcDateTimeOffset(reader.GetDateTime(15));
-            var buyPrice = reader.GetInt64(9);
-            var buyAmount = reader.GetInt64(10);
-            var sellPrice = reader.GetInt64(13);
-            var sellAmount = reader.GetInt64(14);
-            var maxTradableAmount = reader.GetInt64(16);
-            var profitPerItem = buyPrice - sellPrice;
-            var profitPercent = sellPrice == 0
-                ? 0
-                : Math.Round((decimal)profitPerItem / sellPrice * 100, 2);
-
-            results.Add(new BlackMarketFlipOpportunity(
-                reader.GetString(0),
-                reader.GetString(1),
-                reader.GetInt32(2),
-                reader.GetInt32(3),
-                reader.GetString(4),
-                reader.GetString(5),
-                reader.GetString(6),
-                reader.GetString(7),
-                reader.GetInt64(8),
-                buyPrice,
-                buyAmount,
-                buyLastSeenAtUtc,
-                Math.Max(0, (now - buyLastSeenAtUtc).TotalMinutes),
-                reader.GetInt64(12),
-                sellPrice,
-                sellAmount,
-                sellLastSeenAtUtc,
-                Math.Max(0, (now - sellLastSeenAtUtc).TotalMinutes),
-                maxTradableAmount,
-                profitPerItem,
-                profitPercent,
-                profitPerItem * maxTradableAmount));
-        }
-
-        return results;
     }
 
     private static void AppendOptionalFilters(
