@@ -11,13 +11,74 @@ function ageColor(minutes: number): string {
   selector: 'app-topbar',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [`
+    .topbar-icon-button {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      color: var(--color-text-muted);
+      padding: 4px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      transition: all 0.1s;
+    }
+
+    .topbar-icon-button:hover {
+      color: var(--color-text);
+      background: var(--color-surface-2);
+    }
+
+    .topbar-secondary-button {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      background: var(--color-surface-2);
+      border: 1px solid var(--color-border);
+      color: var(--color-text-muted);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .topbar-secondary-button:hover:not(:disabled) {
+      color: var(--color-text);
+      border-color: rgba(214,168,79,0.35);
+    }
+
+    .topbar-primary-button {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 8px;
+      background: var(--color-gold-dim);
+      border: 1px solid rgba(214,168,79,0.25);
+      color: var(--color-gold);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .topbar-primary-button:hover:not(:disabled) {
+      background: rgba(214,168,79,0.2);
+    }
+
+    .topbar-secondary-button:disabled,
+    .topbar-primary-button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+  `],
   template: `
     <header style="height:62px;background:var(--color-surface);border-bottom:1px solid var(--color-border);display:flex;align-items:center;padding:0 20px 0 16px;gap:12px;flex-shrink:0;">
       <button
         (click)="sidebarToggle.emit()"
-        style="background:transparent;border:none;cursor:pointer;color:var(--color-text-muted);padding:4px;border-radius:4px;display:flex;align-items:center;transition:all 0.1s;"
-        onmouseenter="this.style.color='var(--color-text)';this.style.background='var(--color-surface-2)';"
-        onmouseleave="this.style.color='var(--color-text-muted)';this.style.background='transparent';"
+        class="topbar-icon-button"
         aria-label="Toggle sidebar"
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -29,41 +90,33 @@ function ageColor(minutes: number): string {
       </div>
 
       @if (freshnessAge() !== null) {
-        <div style="display:flex;align-items:center;gap:8px;background:var(--color-surface-2);border:1px solid var(--color-border);border-radius:8px;padding:5px 12px;">
+        <div style="display:flex;align-items:center;gap:9px;background:var(--color-surface-2);border:1px solid var(--color-border);border-radius:8px;padding:7px 12px;">
           <span [style.background]="dotColor()" [style.box-shadow]="'0 0 6px ' + dotColor()" style="width:6px;height:6px;border-radius:50%;flex-shrink:0;display:block;"></span>
-          <div>
-            <div style="font-size:11px;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">Freshest data</div>
-            <div [style.color]="dotColor()" class="mono" style="font-size:14px;font-weight:600;line-height:1.2;">{{ formatAge(freshnessAge()!) }} ago</div>
-          </div>
+          <div style="font-size:11px;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:0.05em;font-weight:600;white-space:nowrap;">Freshest data</div>
+          <div [style.color]="dotColor()" class="mono" style="font-size:14px;font-weight:600;line-height:1.2;white-space:nowrap;">{{ formatAge(freshnessAge()!) }} ago</div>
         </div>
       }
 
       <button
         (click)="clearCities.emit()"
         [disabled]="loading() || clearing()"
-        style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;background:var(--color-surface-2);border:1px solid var(--color-border);color:var(--color-text-muted);font-size:13px;font-weight:600;cursor:pointer;transition:all 0.15s;"
-        onmouseenter="this.style.color='var(--color-text)';this.style.borderColor='rgba(214,168,79,0.35)';"
-        onmouseleave="this.style.color='var(--color-text-muted)';this.style.borderColor='var(--color-border)';"
+        class="topbar-secondary-button"
       >
-        Clear Cities
+        {{ clearing() ? 'Clearing...' : 'Clear Cities' }}
       </button>
 
       <button
         (click)="clearBlackMarket.emit()"
         [disabled]="loading() || clearing()"
-        style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;background:var(--color-surface-2);border:1px solid var(--color-border);color:var(--color-text-muted);font-size:13px;font-weight:600;cursor:pointer;transition:all 0.15s;"
-        onmouseenter="this.style.color='var(--color-text)';this.style.borderColor='rgba(214,168,79,0.35)';"
-        onmouseleave="this.style.color='var(--color-text-muted)';this.style.borderColor='var(--color-border)';"
+        class="topbar-secondary-button"
       >
-        Clear Black Market
+        {{ clearing() ? 'Clearing...' : 'Clear Black Market' }}
       </button>
 
       <button
         (click)="refresh.emit()"
         [disabled]="loading() || clearing()"
-        style="display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:8px;background:var(--color-gold-dim);border:1px solid rgba(214,168,79,0.25);color:var(--color-gold);font-size:14px;font-weight:600;cursor:pointer;transition:all 0.15s;"
-        onmouseenter="this.style.background='rgba(214,168,79,0.2)';"
-        onmouseleave="this.style.background='var(--color-gold-dim)';"
+        class="topbar-primary-button"
       >
         <svg
           width="14" height="14" viewBox="0 0 14 14" fill="none"

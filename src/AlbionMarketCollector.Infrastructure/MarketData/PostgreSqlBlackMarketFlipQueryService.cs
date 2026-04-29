@@ -43,6 +43,7 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
                 FROM market_orders mo
                 LEFT JOIN items i ON i.unique_name = mo.item_type_id
                 WHERE mo.order_type = 'Buy'
+                  AND (mo.expires_at_utc IS NULL OR mo.expires_at_utc > now())
             """);
 
         if (sellingLocationIds.Length > 0)
@@ -60,6 +61,7 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
             ),
             ranked_opportunities AS (
                 SELECT
+                    sell.server_id AS sell_server_id,
                     sell.item_type_id,
                     COALESCE(item.localized_name, sell.item_type_id) AS item_localized_name,
                     sell.quality_level AS sell_quality_level,
@@ -76,6 +78,7 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
                     sell.unit_price_silver AS sell_price_silver,
                     sell.amount AS sell_amount,
                     sell.last_seen_at_utc AS sell_last_seen_at_utc,
+                    buy.unit_price_silver - sell.unit_price_silver AS profit_per_item_silver,
                     row_number() OVER (
                         PARTITION BY buy.server_id, buy.order_type, buy.albion_order_id
                         ORDER BY sell.unit_price_silver ASC, sell.last_seen_at_utc DESC
@@ -87,6 +90,7 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
                    AND sell.enchantment_level = buy.enchantment_level
                    AND sell.quality_level >= buy.quality_level
                    AND sell.location_id <> buy.location_id
+                   AND (sell.expires_at_utc IS NULL OR sell.expires_at_utc > now())
                 LEFT JOIN items item ON item.unique_name = sell.item_type_id
                 LEFT JOIN locations source_location ON source_location.id = sell.location_id
                 LEFT JOIN locations black_location ON black_location.id = buy.location_id
@@ -108,6 +112,34 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
 
         sql.AppendLine(
             """
+            ),
+            selected_source_opportunities AS (
+                SELECT *
+                FROM ranked_opportunities
+                WHERE source_rank = 1
+            """);
+
+        if (query.MinProfitPercent is { } minProfitPercent)
+        {
+            sql.AppendLine("AND (profit_per_item_silver::numeric / NULLIF(sell_price_silver, 0)::numeric * 100) >= @minProfitPercent");
+            command.Parameters.AddWithValue("minProfitPercent", minProfitPercent);
+        }
+
+        sql.AppendLine(
+            """
+            ),
+            allocated_opportunities AS (
+                SELECT
+                    *,
+                    COALESCE(
+                        SUM(buy_amount) OVER (
+                            PARTITION BY sell_server_id, sell_order_id
+                            ORDER BY profit_per_item_silver DESC, buy_last_seen_at_utc DESC, buy_order_id
+                            ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                        ),
+                        0
+                    )::bigint AS previously_allocated_buy_amount
+                FROM selected_source_opportunities
             )
             SELECT
                 item_type_id,
@@ -125,18 +157,19 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
                 sell_order_id,
                 sell_price_silver,
                 sell_amount,
-                sell_last_seen_at_utc
-            FROM ranked_opportunities
-            WHERE source_rank = 1
+                sell_last_seen_at_utc,
+                LEAST(
+                    buy_amount,
+                    GREATEST(0::bigint, sell_amount - previously_allocated_buy_amount)
+                ) AS max_tradable_amount
+            FROM allocated_opportunities
+            WHERE LEAST(
+                    buy_amount,
+                    GREATEST(0::bigint, sell_amount - previously_allocated_buy_amount)
+                ) > 0
             """);
 
-        if (query.MinProfitPercent is { } minProfitPercent)
-        {
-            sql.AppendLine("AND ((buy_price_silver - sell_price_silver)::numeric / NULLIF(sell_price_silver, 0)::numeric * 100) >= @minProfitPercent");
-            command.Parameters.AddWithValue("minProfitPercent", minProfitPercent);
-        }
-
-        sql.AppendLine("ORDER BY (buy_price_silver - sell_price_silver) * LEAST(buy_amount, sell_amount) DESC, buy_price_silver - sell_price_silver DESC");
+        sql.AppendLine("ORDER BY (buy_price_silver - sell_price_silver) * max_tradable_amount DESC, buy_price_silver - sell_price_silver DESC");
         sql.AppendLine("LIMIT @limit;");
         command.CommandText = sql.ToString();
 
@@ -151,7 +184,7 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
             var buyAmount = reader.GetInt64(10);
             var sellPrice = reader.GetInt64(13);
             var sellAmount = reader.GetInt64(14);
-            var maxTradableAmount = Math.Min(buyAmount, sellAmount);
+            var maxTradableAmount = reader.GetInt64(16);
             var profitPerItem = buyPrice - sellPrice;
             var profitPercent = sellPrice == 0
                 ? 0

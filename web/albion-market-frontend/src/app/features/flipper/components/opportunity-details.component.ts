@@ -23,6 +23,26 @@ function fmtAge(m: number): string {
   standalone: true,
   imports: [SilverPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [`
+    .details-close-button {
+      background: var(--color-surface-2);
+      border: 1px solid var(--color-border-strong);
+      border-radius: 6px;
+      cursor: pointer;
+      color: var(--color-text-muted);
+      padding: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+      transition: color 0.1s;
+    }
+
+    .details-close-button:hover {
+      color: var(--color-text);
+    }
+  `],
   template: `
     <div style="display:flex;flex-direction:column;height:100%;overflow-y:auto;">
       <!-- Header with item -->
@@ -34,9 +54,7 @@ function fmtAge(m: number): string {
           </div>
           <button
             (click)="close()"
-            style="background:var(--color-surface-2);border:1px solid var(--color-border-strong);border-radius:6px;cursor:pointer;color:var(--color-text-muted);padding:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px;transition:color 0.1s;"
-            onmouseenter="this.style.color='var(--color-text)';"
-            onmouseleave="this.style.color='var(--color-text-muted)';"
+            class="details-close-button"
             aria-label="Close"
           >
             <svg width="11" height="11" viewBox="0 0 10 10" fill="none"><path d="M2 2l6 6M8 2L2 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -113,7 +131,7 @@ function fmtAge(m: number): string {
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><circle cx="5" cy="5" r="4" stroke="var(--color-purple)" stroke-width="1.3"/></svg>
               <span style="font-size:11px;color:var(--color-purple);text-transform:uppercase;letter-spacing:0.07em;font-weight:700;">Sell At</span>
             </div>
-            <div style="font-weight:600;color:var(--color-text);font-size:14px;margin-bottom:2px;">{{ opp().blackMarketLocationName }}</div>
+            <div style="font-weight:600;color:var(--color-text);font-size:14px;margin-bottom:2px;">{{ opp().sellingLocationName }}</div>
             <div class="mono" style="font-size:11px;color:var(--color-text-muted);margin-bottom:8px;">Buy Order</div>
             <div class="mono" style="font-size:14px;font-weight:600;color:var(--color-purple);">{{ opp().buyPriceSilver | silver }}</div>
             <div class="mono" style="font-size:11px;color:var(--color-text-muted);margin-top:1px;">{{ opp().buyPriceSilver | silver }} silver</div>

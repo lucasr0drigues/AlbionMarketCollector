@@ -30,6 +30,10 @@ public sealed class ReferenceDataAndFlipperTests
         var itemUniqueName = $"T4_TEST_ITEM_{suffix}";
         var higherQualityItemId = itemId + 1;
         var higherQualityItemUniqueName = $"T4_TEST_ITEM_HIGHER_QUALITY_{suffix}";
+        var allocationItemId = itemId + 2;
+        var allocationItemUniqueName = $"T4_TEST_ITEM_ALLOC_{suffix}";
+        var expiredItemId = itemId + 3;
+        var expiredItemUniqueName = $"T4_TEST_ITEM_EXPIRED_{suffix}";
         var sellOrderId = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var buyOrderId = sellOrderId + 1;
         var observedOlder = DateTimeOffset.UtcNow.AddMinutes(-10);
@@ -71,6 +75,8 @@ public sealed class ReferenceDataAndFlipperTests
                 [
                     new ItemReference(itemId, itemUniqueName, "Test Flip Item"),
                     new ItemReference(higherQualityItemId, higherQualityItemUniqueName, "Test Higher Quality Item"),
+                    new ItemReference(allocationItemId, allocationItemUniqueName, "Test Allocation Item"),
+                    new ItemReference(expiredItemId, expiredItemUniqueName, "Test Expired Item"),
                 ],
                 CancellationToken.None);
 
@@ -146,6 +152,77 @@ public sealed class ReferenceDataAndFlipperTests
                         OrderType = MarketOrderType.Buy,
                         ObservedAtUtc = observedNewer,
                     },
+                    new MarketOrder
+                    {
+                        ServerId = 1,
+                        LocationId = sourceLocationId,
+                        AlbionOrderId = sellOrderId + 10,
+                        ItemTypeId = allocationItemUniqueName,
+                        ItemGroupTypeId = allocationItemUniqueName,
+                        QualityLevel = 1,
+                        EnchantmentLevel = 0,
+                        UnitPriceSilver = 1_000,
+                        Amount = 1,
+                        OrderType = MarketOrderType.Sell,
+                        ObservedAtUtc = observedNewer,
+                    },
+                    new MarketOrder
+                    {
+                        ServerId = 1,
+                        LocationId = blackMarketLocationId,
+                        AlbionOrderId = buyOrderId + 10,
+                        ItemTypeId = allocationItemUniqueName,
+                        ItemGroupTypeId = allocationItemUniqueName,
+                        QualityLevel = 1,
+                        EnchantmentLevel = 0,
+                        UnitPriceSilver = 1_500,
+                        Amount = 1,
+                        OrderType = MarketOrderType.Buy,
+                        ObservedAtUtc = observedNewer,
+                    },
+                    new MarketOrder
+                    {
+                        ServerId = 1,
+                        LocationId = blackMarketLocationId,
+                        AlbionOrderId = buyOrderId + 11,
+                        ItemTypeId = allocationItemUniqueName,
+                        ItemGroupTypeId = allocationItemUniqueName,
+                        QualityLevel = 1,
+                        EnchantmentLevel = 0,
+                        UnitPriceSilver = 2_000,
+                        Amount = 1,
+                        OrderType = MarketOrderType.Buy,
+                        ObservedAtUtc = observedNewer,
+                    },
+                    new MarketOrder
+                    {
+                        ServerId = 1,
+                        LocationId = sourceLocationId,
+                        AlbionOrderId = sellOrderId + 20,
+                        ItemTypeId = expiredItemUniqueName,
+                        ItemGroupTypeId = expiredItemUniqueName,
+                        QualityLevel = 1,
+                        EnchantmentLevel = 0,
+                        UnitPriceSilver = 1_000,
+                        Amount = 1,
+                        OrderType = MarketOrderType.Sell,
+                        ObservedAtUtc = observedNewer,
+                    },
+                    new MarketOrder
+                    {
+                        ServerId = 1,
+                        LocationId = blackMarketLocationId,
+                        AlbionOrderId = buyOrderId + 20,
+                        ItemTypeId = expiredItemUniqueName,
+                        ItemGroupTypeId = expiredItemUniqueName,
+                        QualityLevel = 1,
+                        EnchantmentLevel = 0,
+                        UnitPriceSilver = 2_000,
+                        Amount = 1,
+                        OrderType = MarketOrderType.Buy,
+                        ExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1),
+                        ObservedAtUtc = observedNewer,
+                    },
                 ],
                 CancellationToken.None);
 
@@ -213,6 +290,33 @@ public sealed class ReferenceDataAndFlipperTests
             Assert.Equal(higherQualityItemUniqueName, higherQualityOpportunity.ItemUniqueName);
             Assert.Equal(4, higherQualityOpportunity.QualityLevel);
             Assert.Equal(1_000, higherQualityOpportunity.ProfitPerItemSilver);
+
+            var allocatedOpportunities = await flipQueries.FindOpportunitiesAsync(
+                new BlackMarketFlipQuery
+                {
+                    SourceLocationIds = [sourceLocationId],
+                    SellingLocationIds = [blackMarketLocationId],
+                    ItemUniqueNames = [allocationItemUniqueName],
+                    Limit = 10,
+                },
+                CancellationToken.None);
+
+            var allocatedOpportunity = Assert.Single(allocatedOpportunities);
+            Assert.Equal(buyOrderId + 11, allocatedOpportunity.BuyOrderId);
+            Assert.Equal(1_000, allocatedOpportunity.ProfitPerItemSilver);
+            Assert.Equal(1, allocatedOpportunity.MaxTradableAmount);
+
+            var expiredOpportunities = await flipQueries.FindOpportunitiesAsync(
+                new BlackMarketFlipQuery
+                {
+                    SourceLocationIds = [sourceLocationId],
+                    SellingLocationIds = [blackMarketLocationId],
+                    ItemUniqueNames = [expiredItemUniqueName],
+                    Limit = 10,
+                },
+                CancellationToken.None);
+
+            Assert.Empty(expiredOpportunities);
         }
         finally
         {

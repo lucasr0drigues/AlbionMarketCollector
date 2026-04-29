@@ -26,7 +26,7 @@ const BASE: LocationOption[] = [
   { key: 'bridgewatch',   label: 'Bridgewatch',   shortLabel: 'BW', ids: ['2004', '2301'], role: 'royal' },
   { key: 'martlock',      label: 'Martlock',      shortLabel: 'ML', ids: ['3008', '3301'], role: 'royal' },
   { key: 'thetford',      label: 'Thetford',      shortLabel: 'TF', ids: ['0007', '0301'], role: 'royal' },
-  { key: 'caerleon',      label: 'Caerleon',      shortLabel: 'CA', ids: ['3005', '3003'], role: 'caerleon' },
+  { key: 'caerleon',      label: 'Caerleon',      shortLabel: 'CA', ids: ['3005'],         role: 'caerleon' },
   { key: 'brecilien',     label: 'Brecilien',     shortLabel: 'BR', ids: ['5003'],         role: 'brecilien' },
   { key: 'arthurs-rest',  label: "Arthur's Rest", shortLabel: 'AR', ids: ['4300'],         role: 'rest' },
   { key: 'merlyns-rest',  label: "Merlyn's Rest", shortLabel: 'MR', ids: ['1012'],         role: 'rest' },

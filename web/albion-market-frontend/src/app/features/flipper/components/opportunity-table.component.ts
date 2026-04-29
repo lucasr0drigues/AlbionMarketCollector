@@ -66,6 +66,80 @@ const PAGE_SIZE = 48;
   host: { style: 'flex:1;overflow:hidden;display:flex;flex-direction:column;min-width:0;' },
   imports: [SilverPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [`
+    .sort-header {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      background: none;
+      cursor: pointer;
+      transition: color 0.12s;
+      white-space: nowrap;
+      border: none;
+    }
+
+    .sort-header:disabled {
+      cursor: default;
+    }
+
+    .opportunity-row {
+      display: grid;
+      align-items: center;
+      gap: 0 8px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--color-border);
+      cursor: pointer;
+      transition: background 0.1s;
+      position: relative;
+      background: transparent;
+    }
+
+    .opportunity-row:hover {
+      background: rgba(255,255,255,0.028);
+    }
+
+    .opportunity-row-selected,
+    .opportunity-row-selected:hover {
+      background: rgba(255,255,255,0.05);
+    }
+
+    .pager-button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 28px;
+      border-radius: 5px;
+      border: 1px solid var(--color-border);
+      background: transparent;
+      color: var(--color-text-muted);
+      cursor: pointer;
+      transition: all 0.1s;
+      font-size: 12px;
+    }
+
+    .pager-button:hover:not(:disabled) {
+      background: var(--color-surface-3);
+      color: var(--color-text);
+    }
+
+    .pager-button:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
+
+    .pager-button-active,
+    .pager-button-active:hover:not(:disabled) {
+      background: var(--color-gold-dim);
+      color: var(--color-gold);
+      border-color: rgba(214,168,79,0.3);
+      font-weight: 600;
+    }
+  `],
   template: `
       <!-- Header -->
       <div [style.grid-template-columns]="colGrid" style="display:grid;gap:0 8px;padding:7px 16px;border-bottom:1px solid var(--color-border);flex-shrink:0;">
@@ -77,7 +151,7 @@ const PAGE_SIZE = 48;
             [style.justify-content]="col.align === 'right' ? 'flex-end' : col.align === 'center' ? 'center' : 'flex-start'"
             [style.color]="sortKey() === col.key ? 'var(--color-gold)' : 'var(--color-text-muted)'"
             [style.padding-right]="col.key === 'buyPrice' ? '24px' : '0'"
-            style="display:flex;align-items:center;gap:4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;background:none;cursor:pointer;transition:color 0.12s;white-space:nowrap;border:none;"
+            class="sort-header"
           >
             {{ col.label }}
             @if (col.key !== null) {
@@ -95,12 +169,10 @@ const PAGE_SIZE = 48;
         @for (row of rows(); track rowKey(row); let isTop = $first) {
           <div
             (click)="rowClick.emit(row.data)"
-            [style.background]="selected() === row.data ? 'rgba(255,255,255,0.05)' : profitTierBg(row.totalTier)"
+            class="opportunity-row"
+            [class.opportunity-row-selected]="selected() === row.data"
             [style.border-left]="borderLeft(row, selected() === row.data)"
             [style.grid-template-columns]="colGrid"
-            style="display:grid;align-items:center;gap:0 8px;padding:10px 16px;border-bottom:1px solid var(--color-border);cursor:pointer;transition:background 0.1s;position:relative;"
-            onmouseenter="if(this.style.background==='transparent'||this.style.background==='') this.style.background='rgba(255,255,255,0.028)';"
-            onmouseleave="this._resetBg && this._resetBg();"
           >
             <!-- Item -->
             <div style="display:flex;align-items:center;gap:9px;min-width:0;">
@@ -241,11 +313,7 @@ const PAGE_SIZE = 48;
             {{ pageStart() }}–{{ pageEnd() }} of {{ allRows().length }}
           </span>
           <div style="display:flex;align-items:center;gap:2px;">
-            <button type="button" (click)="prevPage()" [disabled]="currentPage() === 0"
-              style="display:flex;align-items:center;justify-content:center;width:30px;height:28px;border-radius:5px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer;transition:all 0.1s;font-size:12px;"
-              onmouseenter="if(!this.disabled){this.style.background='var(--color-surface-3)';this.style.color='var(--color-text)';}"
-              onmouseleave="this.style.background='transparent';this.style.color='var(--color-text-muted)';"
-            >
+            <button type="button" (click)="prevPage()" [disabled]="currentPage() === 0" class="pager-button">
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M8 3L4 7l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
 
@@ -253,23 +321,16 @@ const PAGE_SIZE = 48;
               @if (page === -1) {
                 <span style="width:28px;text-align:center;font-size:12px;color:var(--color-text-faint);">…</span>
               } @else {
-                <button type="button" (click)="goToPage(page)"
-                  [style.background]="currentPage() === page ? 'var(--color-gold-dim)' : 'transparent'"
-                  [style.color]="currentPage() === page ? 'var(--color-gold)' : 'var(--color-text-muted)'"
-                  [style.border-color]="currentPage() === page ? 'rgba(214,168,79,0.3)' : 'var(--color-border)'"
-                  [style.font-weight]="currentPage() === page ? '600' : '400'"
-                  style="display:flex;align-items:center;justify-content:center;width:30px;height:28px;border-radius:5px;border:1px solid;cursor:pointer;transition:all 0.1s;font-size:12px;"
-                  onmouseenter="if(this.style.background!=='var(--color-gold-dim)'){this.style.background='var(--color-surface-3)';this.style.color='var(--color-text)';}"
-                  onmouseleave="if(this.style.fontWeight!=='600'){this.style.background='transparent';this.style.color='var(--color-text-muted)';}"
+                <button
+                  type="button"
+                  (click)="goToPage(page)"
+                  class="pager-button"
+                  [class.pager-button-active]="currentPage() === page"
                 >{{ page + 1 }}</button>
               }
             }
 
-            <button type="button" (click)="nextPage()" [disabled]="currentPage() === totalPages() - 1"
-              style="display:flex;align-items:center;justify-content:center;width:30px;height:28px;border-radius:5px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer;transition:all 0.1s;font-size:12px;"
-              onmouseenter="if(!this.disabled){this.style.background='var(--color-surface-3)';this.style.color='var(--color-text)';}"
-              onmouseleave="this.style.background='transparent';this.style.color='var(--color-text-muted)';"
-            >
+            <button type="button" (click)="nextPage()" [disabled]="currentPage() === totalPages() - 1" class="pager-button">
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M6 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
           </div>
@@ -310,7 +371,7 @@ export class OpportunityTableComponent {
     const totalTiers = buildProfitTierMap(data, (r) => r.estimatedTotalProfitSilver);
     return sorted.map<Row>((d) => {
       const q = qualityMeta(d.qualityLevel);
-      const isBlackMarket = d.blackMarketLocationId === '3003' || d.blackMarketLocationName?.toLowerCase().includes('black market');
+      const isBlackMarket = d.sellingLocationId === '3003' || d.sellingLocationName?.toLowerCase().includes('black market');
       return {
         data: d,
         ageMinutes: rowAgeMinutes(d.buyAgeMinutes, d.sellAgeMinutes),
@@ -321,7 +382,7 @@ export class OpportunityTableComponent {
         qualityBorder: q.border,
         qualityGlow: q.glow,
         sourceLabel: sourceMap.get(d.sourceLocationId) ?? d.sourceLocationName,
-        destLabel: sellingMap.get(d.blackMarketLocationId) ?? d.blackMarketLocationName,
+        destLabel: sellingMap.get(d.sellingLocationId) ?? d.sellingLocationName,
         isBM: isBlackMarket,
         profitTier: profitTiers.get(d) ?? 'mid',
         totalTier: totalTiers.get(d) ?? 'mid',
@@ -388,10 +449,6 @@ export class OpportunityTableComponent {
     }
   }
 
-  profitTierBg(_tier: ProfitTier): string {
-    return 'transparent';
-  }
-
   borderLeft(row: Row, isSelected: boolean): string {
     if (isSelected) return '2px solid var(--color-gold)';
     if (row.totalTier === 'top') return '2px solid var(--color-profit)';
@@ -404,7 +461,7 @@ export class OpportunityTableComponent {
       this.sortChange.emit({ key, direction: this.sortDirection() === 'asc' ? 'desc' : 'asc' });
       return;
     }
-    const direction: SortDirection = (key === 'item' || key === 'route') ? 'asc' : 'desc';
+    const direction: SortDirection = (key === 'item' || key === 'route' || key === 'freshness') ? 'asc' : 'desc';
     this.sortChange.emit({ key, direction });
   }
 
@@ -436,17 +493,46 @@ export class OpportunityTableComponent {
 
   private compare(left: FlipOpportunity, right: FlipOpportunity): number {
     const d = this.sortDirection() === 'asc' ? 1 : -1;
+    let result = 0;
     switch (this.sortKey()) {
-      case 'item':      return d * left.itemLocalizedName.localeCompare(right.itemLocalizedName);
-      case 'quality':   return d * (left.qualityLevel - right.qualityLevel);
-      case 'buyPrice':  return d * (left.sellPriceSilver - right.sellPriceSilver);
-      case 'route':     return d * left.sourceLocationName.localeCompare(right.sourceLocationName);
-      case 'sellPrice': return d * (left.buyPriceSilver - right.buyPriceSilver);
-      case 'profit':    return d * (left.profitPerItemSilver - right.profitPerItemSilver);
-      case 'qty':       return d * (left.maxTradableAmount - right.maxTradableAmount);
-      case 'freshness': return d * (rowAgeMinutes(left.buyAgeMinutes, left.sellAgeMinutes) - rowAgeMinutes(right.buyAgeMinutes, right.sellAgeMinutes));
+      case 'item':
+        result = left.itemLocalizedName.localeCompare(right.itemLocalizedName);
+        break;
+      case 'quality':
+        result = (left.qualityLevel - right.qualityLevel) || (left.enchantmentLevel - right.enchantmentLevel);
+        break;
+      case 'buyPrice':
+        result = left.sellPriceSilver - right.sellPriceSilver;
+        break;
+      case 'route':
+        result = `${left.sourceLocationName}|${left.sellingLocationName}`.localeCompare(`${right.sourceLocationName}|${right.sellingLocationName}`);
+        break;
+      case 'sellPrice':
+        result = left.buyPriceSilver - right.buyPriceSilver;
+        break;
+      case 'profit':
+        result = left.profitPerItemSilver - right.profitPerItemSilver;
+        break;
+      case 'qty':
+        result = left.maxTradableAmount - right.maxTradableAmount;
+        break;
+      case 'freshness':
+        result = rowAgeMinutes(left.buyAgeMinutes, left.sellAgeMinutes) - rowAgeMinutes(right.buyAgeMinutes, right.sellAgeMinutes);
+        break;
       case 'total':
-      default:          return d * (left.estimatedTotalProfitSilver - right.estimatedTotalProfitSilver);
+      default:
+        result = left.estimatedTotalProfitSilver - right.estimatedTotalProfitSilver;
+        break;
     }
+
+    if (result !== 0) {
+      return d * result;
+    }
+
+    return this.opportunityKey(left).localeCompare(this.opportunityKey(right));
+  }
+
+  private opportunityKey(value: FlipOpportunity): string {
+    return `${value.itemUniqueName}|${value.sourceLocationId}|${value.sellingLocationId}|${value.sellOrderId}|${value.buyOrderId}`;
   }
 }

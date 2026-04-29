@@ -5,8 +5,8 @@ export interface FlipOpportunity {
   enchantmentLevel: number;
   sourceLocationId: string;
   sourceLocationName: string;
-  blackMarketLocationId: string;
-  blackMarketLocationName: string;
+  sellingLocationId: string;
+  sellingLocationName: string;
   buyOrderId: number;
   buyPriceSilver: number;
   buyAmount: number;

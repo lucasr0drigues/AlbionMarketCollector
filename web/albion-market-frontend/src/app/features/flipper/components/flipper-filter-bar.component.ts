@@ -146,7 +146,54 @@ const PROFIT_PCT_OPTIONS: Array<{ label: string; value: number | null }> = [
             onblur="this.style.borderColor='var(--color-border-strong)';"
           />
         </div>
+
+        <button
+          type="button"
+          (click)="toggleAdvancedFilters()"
+          [attr.aria-expanded]="showAdvancedFilters()"
+          style="height:36px;align-self:flex-end;border:1px solid var(--color-border);border-radius:7px;background:var(--color-surface-2);color:var(--color-text-muted);padding:0 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.12s;white-space:nowrap;"
+        >
+          {{ showAdvancedFilters() ? 'Hide filters' : 'Show more filters' }}
+        </button>
       </div>
+
+      @if (showAdvancedFilters()) {
+        <div style="display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--color-border);">
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <span style="font-size:11px;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">Quality</span>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;">
+              @for (opt of qualityOptions; track opt.label) {
+                <button
+                  type="button"
+                  (click)="patch({ qualityLevel: opt.value })"
+                  [style.border-color]="qualityEqual(opt.value) ? 'rgba(214,168,79,0.3)' : 'var(--color-border)'"
+                  [style.background]="qualityEqual(opt.value) ? 'var(--color-gold-dim)' : 'transparent'"
+                  [style.color]="qualityEqual(opt.value) ? 'var(--color-gold)' : 'var(--color-text-muted)'"
+                  [style.font-weight]="qualityEqual(opt.value) ? '600' : '400'"
+                  style="height:30px;padding:0 10px;border-radius:6px;border:1px solid;font-size:12px;cursor:pointer;transition:all 0.12s;white-space:nowrap;"
+                >{{ opt.label }}</button>
+              }
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <span style="font-size:11px;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">Enchantment</span>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;">
+              @for (opt of enchantmentOptions; track opt.label) {
+                <button
+                  type="button"
+                  (click)="patch({ enchantmentLevel: opt.value })"
+                  [style.border-color]="enchantmentEqual(opt.value) ? 'rgba(214,168,79,0.3)' : 'var(--color-border)'"
+                  [style.background]="enchantmentEqual(opt.value) ? 'var(--color-gold-dim)' : 'transparent'"
+                  [style.color]="enchantmentEqual(opt.value) ? 'var(--color-gold)' : 'var(--color-text-muted)'"
+                  [style.font-weight]="enchantmentEqual(opt.value) ? '600' : '400'"
+                  style="height:30px;padding:0 10px;border-radius:6px;border:1px solid;font-size:12px;cursor:pointer;transition:all 0.12s;white-space:nowrap;"
+                >{{ opt.label }}</button>
+              }
+            </div>
+          </div>
+        </div>
+      }
 
       <!-- Active chips row -->
       @if (hasActiveChips()) {
@@ -175,6 +222,22 @@ const PROFIT_PCT_OPTIONS: Array<{ label: string; value: number | null }> = [
               </button>
             </span>
           }
+          @if (filters().qualityLevel !== null) {
+            <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;color:var(--color-gold);background:var(--color-gold-dim);border:1px solid rgba(214,168,79,0.3);border-radius:6px;padding:3px 8px;">
+              {{ qualityLabel(filters().qualityLevel) }}
+              <button type="button" (click)="patch({ qualityLevel: null })" style="background:none;cursor:pointer;color:var(--color-text-muted);display:flex;padding:0;">
+                <svg width="9" height="9" viewBox="0 0 10 10" fill="none"><path d="M2 2l6 6M8 2L2 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              </button>
+            </span>
+          }
+          @if (filters().enchantmentLevel !== null) {
+            <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;color:var(--color-purple);background:var(--color-purple-dim);border:1px solid rgba(167,139,250,0.3);border-radius:6px;padding:3px 8px;">
+              {{ enchantmentLabel(filters().enchantmentLevel) }}
+              <button type="button" (click)="patch({ enchantmentLevel: null })" style="background:none;cursor:pointer;color:var(--color-text-muted);display:flex;padding:0;">
+                <svg width="9" height="9" viewBox="0 0 10 10" fill="none"><path d="M2 2l6 6M8 2L2 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              </button>
+            </span>
+          }
         </div>
       }
     </div>
@@ -186,6 +249,9 @@ export class FlipperFilterBarComponent {
 
   readonly ageOptions = AGE_OPTIONS;
   readonly profitPctOptions = PROFIT_PCT_OPTIONS;
+  readonly qualityOptions = QUALITY_OPTIONS;
+  readonly enchantmentOptions = ENCHANTMENT_OPTIONS;
+  readonly showAdvancedFilters = signal(false);
 
   readonly sourceOptions = computed<MultiSelectOption[]>(() =>
     SOURCE_LOCATIONS.map((o) => ({ key: o.key, label: o.label })),
@@ -198,7 +264,9 @@ export class FlipperFilterBarComponent {
   readonly hasActiveChips = computed(() =>
     this.filters().sourceKeys.length > 0 ||
     this.filters().sellingKeys.length > 0 ||
-    this.filters().items.length > 0,
+    this.filters().items.length > 0 ||
+    this.filters().qualityLevel !== null ||
+    this.filters().enchantmentLevel !== null,
   );
 
   ageEqual(value: number | null): boolean {
@@ -207,6 +275,34 @@ export class FlipperFilterBarComponent {
 
   pctEqual(value: number | null): boolean {
     return this.filters().minProfitPercent === value;
+  }
+
+  qualityEqual(value: number | null): boolean {
+    return this.filters().qualityLevel === value;
+  }
+
+  enchantmentEqual(value: number | null): boolean {
+    return this.filters().enchantmentLevel === value;
+  }
+
+  toggleAdvancedFilters(): void {
+    this.showAdvancedFilters.update((value) => !value);
+  }
+
+  qualityLabel(value: number | null): string {
+    if (value === null) {
+      return 'Any quality';
+    }
+
+    return QUALITY_OPTIONS.find((option) => option.value === value)?.label ?? `Quality ${value}`;
+  }
+
+  enchantmentLabel(value: number | null): string {
+    if (value === null) {
+      return 'Any enchant';
+    }
+
+    return ENCHANTMENT_OPTIONS.find((option) => option.value === value)?.label ?? `+${value}`;
   }
 
   labelFor(key: string, type: 'source' | 'selling'): string {

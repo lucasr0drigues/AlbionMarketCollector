@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Output, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, OnDestroy, Output, computed, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, ChevronDownIcon, XIcon, SearchIcon } from 'lucide-angular';
 import { Subject, debounceTime, distinctUntilChanged, of, switchMap, takeUntil } from 'rxjs';
@@ -99,7 +99,7 @@ import { ItemIconComponent } from '../../../shared/ui/item-icon.component';
     </ng-template>
   `,
 })
-export class ItemMultiSelectComponent {
+export class ItemMultiSelectComponent implements OnDestroy {
   readonly selected = input.required<ItemSearchResult[]>();
   @Output() readonly selectedChange = new EventEmitter<ItemSearchResult[]>();
 
@@ -155,5 +155,10 @@ export class ItemMultiSelectComponent {
 
   remove(item: ItemSearchResult): void {
     this.selectedChange.emit(this.selected().filter((s) => s.uniqueName !== item.uniqueName));
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

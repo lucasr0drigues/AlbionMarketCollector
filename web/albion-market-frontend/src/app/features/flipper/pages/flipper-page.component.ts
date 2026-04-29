@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, computed, effect, inject, signal } from '@angular/core';
 import { Subject, debounceTime, of, switchMap, takeUntil } from 'rxjs';
 import { catchError, finalize } from 'rxjs/operators';
 import { AppShellComponent } from '../../../layout/app-shell.component';
@@ -105,7 +105,7 @@ import { flattenLocationIds, SOURCE_LOCATIONS, SELLING_LOCATIONS } from '../../.
     </ui-drawer>
   `,
 })
-export class FlipperPageComponent {
+export class FlipperPageComponent implements OnDestroy {
   private readonly api = inject(MarketApiService);
   private readonly fetchTrigger$ = new Subject<FlipFilters>();
   private readonly destroy$ = new Subject<void>();
@@ -165,9 +165,10 @@ export class FlipperPageComponent {
         takeUntil(this.destroy$),
       )
       .subscribe((data) => {
+        const selected = this.selected();
         this.opportunities.set(data);
-        if (this.selected() && !data.includes(this.selected()!)) {
-          this.selected.set(null);
+        if (selected) {
+          this.selected.set(data.find((item) => sameOpportunity(item, selected)) ?? null);
         }
       });
 
@@ -183,16 +184,31 @@ export class FlipperPageComponent {
   select(opportunity: FlipOpportunity): void { this.selected.set(opportunity); }
   closeDetails(): void { this.selected.set(null); }
 
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
   clearCities(): void {
     const sourceKeys = this.filters().sourceKeys;
-    const selectedIds = sourceKeys.length > 0
-      ? flattenLocationIds(SOURCE_LOCATIONS, sourceKeys)
-      : flattenLocationIds(SOURCE_LOCATIONS, SOURCE_LOCATIONS.map((location) => location.key));
-    this.clearMarketOrders(selectedIds.filter((locationId) => locationId !== '3003'));
+    const selectedLocations = sourceKeys.length > 0
+      ? SOURCE_LOCATIONS.filter((location) => sourceKeys.includes(location.key))
+      : SOURCE_LOCATIONS;
+    const selectedIds = selectedLocations.flatMap((location) => location.ids);
+    const label = sourceKeys.length > 0
+      ? selectedLocations.map((location) => location.label).join(', ')
+      : 'all source cities';
+    this.clearMarketOrders(
+      selectedIds.filter((locationId) => locationId !== '3003'),
+      `Delete stored market orders for ${label}? This cannot be undone.`,
+    );
   }
 
   clearBlackMarket(): void {
-    this.clearMarketOrders(['3003']);
+    this.clearMarketOrders(
+      ['3003'],
+      'Delete stored market orders for the Black Market? This cannot be undone.',
+    );
   }
 
   onSortChange(event: { key: SortKey; direction: SortDirection }): void {
@@ -207,21 +223,36 @@ export class FlipperPageComponent {
     return 'API returned an error. Make sure the API is running on http://localhost:5000.';
   }
 
-  private clearMarketOrders(locationIds: string[]): void {
+  private clearMarketOrders(locationIds: string[], confirmationMessage: string): void {
     const uniqueLocationIds = [...new Set(locationIds.filter(Boolean))];
     if (uniqueLocationIds.length === 0) {
+      return;
+    }
+
+    if (typeof window !== 'undefined' && !window.confirm(confirmationMessage)) {
       return;
     }
 
     this.clearing.set(true);
     this.error.set(null);
     this.api.clearMarketOrders(uniqueLocationIds)
-      .pipe(finalize(() => this.clearing.set(false)))
+      .pipe(
+        takeUntil(this.destroy$),
+        finalize(() => this.clearing.set(false)),
+      )
       .subscribe({
         next: () => this.reload(),
         error: (err) => this.error.set(this.toMessage(err)),
       });
   }
+}
+
+function sameOpportunity(left: FlipOpportunity, right: FlipOpportunity): boolean {
+  return left.buyOrderId === right.buyOrderId &&
+    left.sellOrderId === right.sellOrderId &&
+    left.sourceLocationId === right.sourceLocationId &&
+    left.sellingLocationId === right.sellingLocationId &&
+    left.itemUniqueName === right.itemUniqueName;
 }
 
 function toApiFilters(filters: FlipperFilters): FlipFilters {
