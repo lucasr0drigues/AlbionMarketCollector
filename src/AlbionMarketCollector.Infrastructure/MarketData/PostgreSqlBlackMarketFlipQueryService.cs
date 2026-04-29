@@ -140,6 +140,30 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
                         0
                     )::bigint AS previously_allocated_buy_amount
                 FROM selected_source_opportunities
+            ),
+            tradable_opportunities AS (
+                SELECT
+                    item_type_id,
+                    item_localized_name,
+                    sell_quality_level,
+                    enchantment_level,
+                    source_location_id,
+                    source_location_name,
+                    selling_location_id,
+                    selling_location_name,
+                    buy_order_id,
+                    buy_price_silver,
+                    buy_amount,
+                    buy_last_seen_at_utc,
+                    sell_order_id,
+                    sell_price_silver,
+                    sell_amount,
+                    sell_last_seen_at_utc,
+                    LEAST(
+                        buy_amount,
+                        GREATEST(0::bigint, sell_amount - previously_allocated_buy_amount)
+                    ) AS max_tradable_amount
+                FROM allocated_opportunities
             )
             SELECT
                 item_type_id,
@@ -158,15 +182,9 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
                 sell_price_silver,
                 sell_amount,
                 sell_last_seen_at_utc,
-                LEAST(
-                    buy_amount,
-                    GREATEST(0::bigint, sell_amount - previously_allocated_buy_amount)
-                ) AS max_tradable_amount
-            FROM allocated_opportunities
-            WHERE LEAST(
-                    buy_amount,
-                    GREATEST(0::bigint, sell_amount - previously_allocated_buy_amount)
-                ) > 0
+                max_tradable_amount
+            FROM tradable_opportunities
+            WHERE max_tradable_amount > 0
             """);
 
         sql.AppendLine("ORDER BY (buy_price_silver - sell_price_silver) * max_tradable_amount DESC, buy_price_silver - sell_price_silver DESC");
