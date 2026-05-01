@@ -81,5 +81,5 @@ export function itemImageUrl(uniqueName: string, enchantmentLevel = 0, quality =
     params.push(`quality=${quality}`);
   }
   const query = params.length > 0 ? `?${params.join('&')}` : '';
-  return `https://render.albiononline.com/v1/item/${base}${query}`;
+  return `https://render.albiononline.com/v1/item/${base}.png${query}`;
 }

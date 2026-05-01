@@ -2,7 +2,8 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 import { FlipOpportunity } from '../../../core/models';
 import { SilverPipe } from '../../../core/formatting/silver.pipe';
 import { rowAgeMinutes } from '../../../core/domain/freshness';
-import { qualityMeta, extractTier, extractEnchant, TIER_COLORS } from '../../../core/domain/quality';
+import { extractTier, extractEnchant, TIER_COLORS } from '../../../core/domain/quality';
+import { itemImageUrl } from '../../../core/market-api.service';
 
 function ageColor(m: number): string {
   if (m < 15) return 'var(--color-profit)';
@@ -64,8 +65,6 @@ function fmtAge(m: number): string {
         <!-- Item identity -->
         <div style="display:flex;align-items:center;gap:10px;">
           <div
-            [style.border]="'2px solid ' + qualityBorder()"
-            [style.box-shadow]="qualityGlow() ? '0 0 10px ' + qualityBorder() + '50' : 'none'"
             style="width:44px;height:44px;border-radius:8px;background:var(--color-surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;"
           >
             <img [src]="imgUrl()" [alt]="opp().itemLocalizedName" loading="lazy" style="width:100%;height:100%;object-fit:contain;"/>
@@ -198,17 +197,13 @@ export class OpportunityDetailsComponent {
 
   readonly overallAge = computed(() => rowAgeMinutes(this.opp().buyAgeMinutes, this.opp().sellAgeMinutes));
 
-  qualityBorder(): string { return qualityMeta(this.opp().qualityLevel).border; }
-  qualityGlow(): boolean  { return qualityMeta(this.opp().qualityLevel).glow; }
   tier(): string | null   { return extractTier(this.opp().itemUniqueName); }
   enchant(): string       { return extractEnchant(this.opp().itemUniqueName); }
   tierColor(): string     { return TIER_COLORS[this.tier() ?? ''] ?? '#71717A'; }
 
   imgUrl(): string {
     const d = this.opp();
-    const base = d.enchantmentLevel > 0 && !d.itemUniqueName.includes('@')
-      ? `${d.itemUniqueName}@${d.enchantmentLevel}` : d.itemUniqueName;
-    return `https://render.albiononline.com/v1/item/${base}`;
+    return itemImageUrl(d.itemUniqueName, d.enchantmentLevel, d.qualityLevel);
   }
 
   ageColor(m: number): string {

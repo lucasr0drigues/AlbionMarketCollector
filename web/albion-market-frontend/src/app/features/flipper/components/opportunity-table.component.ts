@@ -5,6 +5,7 @@ import { rowAgeMinutes } from '../../../core/domain/freshness';
 import { buildProfitTierMap, ProfitTier } from '../../../core/domain/profit-tier';
 import { qualityMeta, extractTier, extractEnchant, TIER_COLORS } from '../../../core/domain/quality';
 import { SOURCE_LOCATIONS, SELLING_LOCATIONS } from '../../../core/domain/locations';
+import { itemImageUrl } from '../../../core/market-api.service';
 
 export type SortKey = 'item' | 'quality' | 'buyPrice' | 'route' | 'sellPrice' | 'profit' | 'total' | 'qty' | 'freshness';
 export type SortDirection = 'asc' | 'desc';
@@ -33,8 +34,6 @@ interface Row {
   enchant: string;
   qualityLabel: string;
   qualityColor: string;
-  qualityBorder: string;
-  qualityGlow: boolean;
   sourceLabel: string;
   destLabel: string;
   isBM: boolean;
@@ -176,8 +175,6 @@ const COLS: Array<{ key: SortKey | null; label: string; align: 'left' | 'right' 
             <div style="display:flex;align-items:center;gap:9px;min-width:0;">
               <div
                 class="item-icon-hover"
-                [style.border]="'2px solid ' + row.qualityBorder"
-                [style.box-shadow]="row.qualityGlow ? '0 0 8px ' + row.qualityBorder + '60' : 'none'"
                 style="width:42px;height:42px;border-radius:6px;background:var(--color-surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;"
               >
                 <img
@@ -375,8 +372,6 @@ export class OpportunityTableComponent {
         enchant: extractEnchant(d.itemUniqueName),
         qualityLabel: q.label,
         qualityColor: q.color,
-        qualityBorder: q.border,
-        qualityGlow: q.glow,
         sourceLabel: sourceMap.get(d.sourceLocationId) ?? d.sourceLocationName,
         destLabel: sellingMap.get(d.sellingLocationId) ?? d.sellingLocationName,
         isBM: isBlackMarket,
@@ -401,10 +396,7 @@ export class OpportunityTableComponent {
   readonly totalQty = computed(() => this.opportunities().reduce((s, o) => s + o.maxTradableAmount, 0));
 
   imgUrl(d: FlipOpportunity): string {
-    const base = d.enchantmentLevel > 0 && !d.itemUniqueName.includes('@')
-      ? `${d.itemUniqueName}@${d.enchantmentLevel}`
-      : d.itemUniqueName;
-    return `https://render.albiononline.com/v1/item/${base}`;
+    return itemImageUrl(d.itemUniqueName, d.enchantmentLevel, d.qualityLevel);
   }
 
   tierColor(tier: string): string {
