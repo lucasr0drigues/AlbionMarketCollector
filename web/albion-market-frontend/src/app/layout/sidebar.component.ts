@@ -1,9 +1,35 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { RouterLink, RouterLinkActive } from '@angular/router';
 
 @Component({
   selector: 'app-sidebar',
   standalone: true,
+  imports: [RouterLink, RouterLinkActive],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [`
+    .sidebar-link {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--color-text-muted);
+      font-size: 14px;
+      font-weight: 600;
+      width: 100%;
+      text-align: left;
+      white-space: nowrap;
+      overflow: hidden;
+      border: none;
+      text-decoration: none;
+    }
+
+    .sidebar-link-active {
+      background: var(--color-gold-dim);
+      color: var(--color-gold);
+    }
+  `],
   template: `
     <aside
       [style.width]="collapsed() ? '52px' : '200px'"
@@ -22,14 +48,13 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
       <!-- Nav -->
       <nav style="flex:1;padding:8px 6px;display:flex;flex-direction:column;gap:2px;">
-        <!-- Flipper (active) -->
-        <button style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:7px;background:var(--color-gold-dim);color:var(--color-gold);font-size:14px;font-weight:600;width:100%;text-align:left;white-space:nowrap;overflow:hidden;border:none;">
+        <a routerLink="/" routerLinkActive="sidebar-link-active" [routerLinkActiveOptions]="{ exact: true }" class="sidebar-link">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
             <path d="M12 10l3 2-3 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
           @if (!collapsed()) { <span>Flipper</span> }
-        </button>
+        </a>
 
         <!-- History (disabled) -->
         <button style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:7px;background:transparent;color:var(--color-text-muted);font-size:14px;width:100%;text-align:left;white-space:nowrap;overflow:hidden;border:none;cursor:not-allowed;opacity:0.5;">
@@ -52,10 +77,10 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
       <!-- Settings -->
       <div style="padding:8px 6px;border-top:1px solid var(--color-border);">
-        <button style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:7px;background:transparent;color:var(--color-text-muted);font-size:14px;width:100%;text-align:left;white-space:nowrap;overflow:hidden;border:none;cursor:not-allowed;opacity:0.5;">
+        <a routerLink="/settings" routerLinkActive="sidebar-link-active" class="sidebar-link">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
           @if (!collapsed()) { Settings }
-        </button>
+        </a>
       </div>
     </aside>
   `,

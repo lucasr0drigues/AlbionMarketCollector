@@ -1,7 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
-import { ClearMarketOrdersResult, FlipFilters, FlipOpportunityPage, ItemSearchResult } from './models';
+import { AppSettings, ClearMarketOrdersResult, FlipFilters, FlipOpportunityPage, ItemSearchResult, UpdateAppSettingsRequest } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class MarketApiService {
@@ -36,6 +36,9 @@ export class MarketApiService {
     if (filters.minProfitPercent != null) {
       params = params.set('minProfitPercent', filters.minProfitPercent);
     }
+    if (filters.marketTaxRate != null) {
+      params = params.set('marketTaxRate', filters.marketTaxRate);
+    }
 
     for (const uniqueName of filters.itemUniqueNames ?? []) {
       params = params.append('itemUniqueNames', uniqueName);
@@ -69,6 +72,14 @@ export class MarketApiService {
     }
 
     return this.http.delete<ClearMarketOrdersResult>(`${this.apiBaseUrl}/market-orders`, { params });
+  }
+
+  getSettings(): Observable<AppSettings> {
+    return this.http.get<AppSettings>(`${this.apiBaseUrl}/settings`);
+  }
+
+  updateSettings(request: UpdateAppSettingsRequest): Observable<AppSettings> {
+    return this.http.put<AppSettings>(`${this.apiBaseUrl}/settings`, request);
   }
 }
 

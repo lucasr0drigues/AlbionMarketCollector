@@ -40,6 +40,7 @@ export interface FlipFilters {
   minProfitSilver?: number | null;
   minTotalProfitSilver?: number | null;
   minProfitPercent?: number | null;
+  marketTaxRate?: number;
   itemUniqueNames?: string[];
   qualityLevel?: number | null;
   enchantmentLevel?: number | null;
@@ -57,4 +58,16 @@ export interface ItemSearchResult {
 
 export interface ClearMarketOrdersResult {
   deletedCount: number;
+}
+
+export interface AppSettings {
+  premium: boolean;
+  defaultMinTotalProfitSilver: number | null;
+  defaultMinProfitPercent: number | null;
+}
+
+export interface UpdateAppSettingsRequest {
+  premium: boolean;
+  defaultMinTotalProfitSilver: number | null;
+  defaultMinProfitPercent: number | null;
 }

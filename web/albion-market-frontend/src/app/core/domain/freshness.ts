@@ -25,10 +25,14 @@ export function formatAgeMinutes(minutes: number): string {
   if (minutes < 60) {
     return `${Math.round(minutes)}m`;
   }
-  const hours = minutes / 60;
-  if (hours < 24) {
-    return `${hours.toFixed(hours < 10 ? 1 : 0)}h`;
+  if (minutes < 24 * 60) {
+    const totalMinutes = Math.round(minutes);
+    const hours = Math.floor(totalMinutes / 60);
+    const remainingMinutes = totalMinutes % 60;
+    return remainingMinutes === 0 ? `${hours}h` : `${hours}h ${remainingMinutes}m`;
   }
-  const days = hours / 24;
-  return `${days.toFixed(days < 10 ? 1 : 0)}d`;
+  const totalHours = Math.round(minutes / 60);
+  const days = Math.floor(totalHours / 24);
+  const remainingHours = totalHours % 24;
+  return remainingHours === 0 ? `${days}d` : `${days}d ${remainingHours}h`;
 }

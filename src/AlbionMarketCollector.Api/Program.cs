@@ -3,6 +3,7 @@ using AlbionMarketCollector.Application.Contracts;
 using AlbionMarketCollector.Application.ReferenceData;
 using AlbionMarketCollector.Infrastructure.MarketData;
 using AlbionMarketCollector.Infrastructure.ReferenceData;
+using AlbionMarketCollector.Infrastructure.Settings;
 using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -25,6 +26,7 @@ builder.Services.AddSingleton<IReferenceDataQueryService, PostgreSqlReferenceDat
 builder.Services.AddSingleton<IMarketDataQueryService, PostgreSqlMarketDataQueryService>();
 builder.Services.AddSingleton<IBlackMarketFlipQueryService, PostgreSqlBlackMarketFlipQueryService>();
 builder.Services.AddSingleton<IMarketOrderMaintenanceService, PostgreSqlMarketOrderMaintenanceService>();
+builder.Services.AddSingleton<IAppSettingsService, PostgreSqlAppSettingsService>();
 builder.Services.AddControllers();
 
 var allowedOrigins = builder.Configuration

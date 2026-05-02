@@ -13,10 +13,17 @@ import { LoadingStateComponent } from '../../../shared/ui/loading-state.componen
 import { StatCardComponent } from '../../../shared/ui/stat-card.component';
 import { SilverPipe } from '../../../core/formatting/silver.pipe';
 import { MarketApiService } from '../../../core/market-api.service';
-import { FlipFilters, FlipOpportunity, FlipOpportunityPage } from '../../../core/models';
+import { AppSettings, FlipFilters, FlipOpportunity, FlipOpportunityPage } from '../../../core/models';
 import { FlipperFilters, DEFAULT_FILTERS, FLIPPER_PAGE_SIZE } from '../state/flipper-filters';
-import { rowAgeMinutes } from '../../../core/domain/freshness';
+import { formatAgeMinutes, rowAgeMinutes } from '../../../core/domain/freshness';
 import { flattenLocationIds, SOURCE_LOCATIONS, SELLING_LOCATIONS } from '../../../core/domain/locations';
+import { marketTaxLabel, marketTaxRate, profitAfterMarketTax, totalProfitAfterMarketTax } from '../../../core/domain/market-tax';
+
+function ageColor(minutes: number): string {
+  if (minutes < 15) return 'var(--color-profit)';
+  if (minutes < 60) return 'var(--color-warn)';
+  return 'var(--color-danger)';
+}
 
 @Component({
   selector: 'app-flipper-page',
@@ -60,8 +67,9 @@ import { flattenLocationIds, SOURCE_LOCATIONS, SELLING_LOCATIONS } from '../../.
             <ui-stat-card label="Opportunities" accent="gold" sub="showing now" style="flex:1;min-width:0;">{{ visibleCount() }}</ui-stat-card>
             <ui-stat-card label="Top Profit / Unit" accent="green" sub="best single item" style="flex:1;min-width:0;">{{ topUnitProfit() | silver }}</ui-stat-card>
             <ui-stat-card label="Top Total Profit" accent="green" sub="if all qty bought" style="flex:1;min-width:0;">{{ topTotalProfit() | silver }}</ui-stat-card>
-            <ui-stat-card label="Freshest Data" accent="neutral" sub="most recent update" style="flex:1;min-width:0;">
-              @if (freshestAge() !== null) { {{ freshestAge() }}m ago } @else { — }
+            <ui-stat-card label="Tax" accent="amber" [sub]="premium() ? 'premium enabled' : 'premium disabled'" style="flex:1;min-width:0;">{{ taxLabel() }}</ui-stat-card>
+            <ui-stat-card label="Freshest Data" accent="neutral" [customColor]="freshestColor()" sub="most recent update" style="flex:1;min-width:0;">
+              @if (freshestAge() !== null) { {{ formattedFreshestAge() }} ago } @else { — }
             </ui-stat-card>
           </div>
         }
@@ -91,6 +99,7 @@ import { flattenLocationIds, SOURCE_LOCATIONS, SELLING_LOCATIONS } from '../../.
               [totalCount]="totalCount()"
               [totalPages]="totalPages()"
               [hasMore]="hasMore()"
+              [taxRate]="taxRate()"
               (rowClick)="select($event)"
               (sortChange)="onSortChange($event)"
               (pageChange)="goToPage($event)"
@@ -115,6 +124,7 @@ export class FlipperPageComponent implements OnDestroy {
   private readonly api = inject(MarketApiService);
   private readonly fetchTrigger$ = new Subject<FlipFilters>();
   private readonly destroy$ = new Subject<void>();
+  private settingsDefaultsApplied = false;
 
   readonly filters = signal<FlipperFilters>(loadFiltersFromUrl() ?? DEFAULT_FILTERS);
   readonly opportunities = signal<FlipOpportunity[]>([]);
@@ -122,6 +132,7 @@ export class FlipperPageComponent implements OnDestroy {
   readonly loading = signal(false);
   readonly clearing = signal(false);
   readonly error = signal<string | null>(null);
+  readonly premium = signal(false);
 
   readonly sortKey = signal<SortKey>('total');
   readonly sortDirection = signal<SortDirection>('desc');
@@ -147,14 +158,29 @@ export class FlipperPageComponent implements OnDestroy {
   });
 
   readonly topUnitProfit = computed(() =>
-    this.filteredOpportunities().reduce((max, item) => Math.max(max, item.profitPerItemSilver), 0),
+    this.filteredOpportunities().reduce((max, item) => Math.max(max, profitAfterMarketTax(item.buyPriceSilver, item.sellPriceSilver, this.taxRate())), 0),
   );
 
   readonly topTotalProfit = computed(() =>
-    this.filteredOpportunities().reduce((max, item) => Math.max(max, item.estimatedTotalProfitSilver), 0),
+    this.filteredOpportunities().reduce((max, item) => Math.max(max, totalProfitAfterMarketTax(item.buyPriceSilver, item.sellPriceSilver, item.maxTradableAmount, this.taxRate())), 0),
   );
 
+  readonly taxRate = computed(() => marketTaxRate(this.premium()));
+  readonly taxLabel = computed(() => marketTaxLabel(this.taxRate()));
+  readonly freshestColor = computed(() => this.freshestAge() === null ? 'var(--color-border)' : ageColor(this.freshestAge()!));
+  readonly formattedFreshestAge = computed(() => this.freshestAge() === null ? '—' : formatAgeMinutes(this.freshestAge()!));
+
   constructor() {
+    this.api.getSettings()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (settings) => {
+          this.premium.set(settings.premium);
+          this.applyDefaultFilters(settings);
+        },
+        error: () => this.premium.set(false),
+      });
+
     this.fetchTrigger$
       .pipe(
         debounceTime(280),
@@ -187,8 +213,9 @@ export class FlipperPageComponent implements OnDestroy {
       const page = this.page();
       const sortKey = this.sortKey();
       const sortDirection = this.sortDirection();
+      const taxRate = this.taxRate();
       saveFiltersToUrl(filters);
-      this.fetchTrigger$.next(toApiFilters(filters, page, this.pageSize, sortKey, sortDirection));
+      this.fetchTrigger$.next(toApiFilters(filters, page, this.pageSize, sortKey, sortDirection, taxRate));
     });
   }
 
@@ -198,7 +225,7 @@ export class FlipperPageComponent implements OnDestroy {
   }
 
   reload(): void {
-    this.fetchTrigger$.next(toApiFilters(this.filters(), this.page(), this.pageSize, this.sortKey(), this.sortDirection()));
+    this.fetchTrigger$.next(toApiFilters(this.filters(), this.page(), this.pageSize, this.sortKey(), this.sortDirection(), this.taxRate()));
   }
 
   select(opportunity: FlipOpportunity): void { this.selected.set(opportunity); }
@@ -248,6 +275,24 @@ export class FlipperPageComponent implements OnDestroy {
     return 'API returned an error. Make sure the API is running on http://localhost:5000.';
   }
 
+  private applyDefaultFilters(settings: AppSettings): void {
+    if (this.settingsDefaultsApplied) {
+      return;
+    }
+
+    this.settingsDefaultsApplied = true;
+    if (settings.defaultMinTotalProfitSilver === null && settings.defaultMinProfitPercent === null) {
+      return;
+    }
+
+    this.page.set(1);
+    this.filters.update((filters) => ({
+      ...filters,
+      minTotalProfitSilver: filters.minTotalProfitSilver ?? settings.defaultMinTotalProfitSilver,
+      minProfitPercent: filters.minProfitPercent ?? settings.defaultMinProfitPercent,
+    }));
+  }
+
   private clearMarketOrders(locationIds: string[], confirmationMessage: string): void {
     const uniqueLocationIds = [...new Set(locationIds.filter(Boolean))];
     if (uniqueLocationIds.length === 0) {
@@ -286,6 +331,7 @@ function toApiFilters(
   pageSize: number,
   sortBy: SortKey,
   sortDirection: SortDirection,
+  marketTaxRate: number,
 ): FlipFilters {
   return {
     sourceLocationIds: flattenLocationIds(SOURCE_LOCATIONS, filters.sourceKeys),
@@ -295,6 +341,7 @@ function toApiFilters(
     minProfitSilver: filters.minProfitSilver,
     minTotalProfitSilver: toStoredSilver(filters.minTotalProfitSilver),
     minProfitPercent: filters.minProfitPercent,
+    marketTaxRate,
     itemUniqueNames: filters.items.map((i) => i.uniqueName),
     qualityLevel: filters.qualityLevel,
     enchantmentLevel: filters.enchantmentLevel,

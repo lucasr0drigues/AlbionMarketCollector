@@ -16,6 +16,8 @@ public sealed class BlackMarketFlipQuery
 
     public decimal? MinProfitPercent { get; init; }
 
+    public decimal MarketTaxRate { get; init; }
+
     public string? ItemSearch { get; init; }
 
     public IReadOnlyList<string> ItemUniqueNames { get; init; } = [];

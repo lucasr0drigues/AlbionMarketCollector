@@ -85,12 +85,14 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
         var offset = (long)(page - 1) * pageSize;
         var maxAgeMinutes = query.MaxAgeMinutes is > 0 ? query.MaxAgeMinutes.Value : (int?)null;
         var minProfitSilver = Math.Max(1, query.MinProfitSilver ?? 1);
+        var marketTaxRate = NormalizeMarketTaxRate(query.MarketTaxRate);
         var sourceLocationIds = NormalizeList(query.SourceLocationIds);
         var excludedSourceLocationIds = NormalizeList(query.ExcludedSourceLocationIds);
         var sellingLocationIds = NormalizeList(query.SellingLocationIds);
         var itemUniqueNames = NormalizeList(query.ItemUniqueNames);
 
         command.Parameters.AddWithValue("minProfitSilver", minProfitSilver);
+        command.Parameters.AddWithValue("marketTaxRate", marketTaxRate);
         command.Parameters.AddWithValue("pageSize", pageSize);
         command.Parameters.AddWithValue("offset", offset);
 
@@ -137,6 +139,7 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
                     sell.amount AS sell_amount,
                     sell.last_seen_at_utc AS sell_last_seen_at_utc,
                     buy.unit_price_silver - sell.unit_price_silver AS profit_per_item_silver,
+                    buy.unit_price_silver - sell.unit_price_silver - (buy.unit_price_silver::numeric * @marketTaxRate) AS net_profit_per_item_silver,
                     row_number() OVER (
                         PARTITION BY buy.server_id, buy.order_type, buy.albion_order_id
                         ORDER BY sell.unit_price_silver ASC, sell.last_seen_at_utc DESC
@@ -152,7 +155,7 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
                 LEFT JOIN items item ON item.unique_name = sell.item_type_id
                 LEFT JOIN locations source_location ON source_location.id = sell.location_id
                 LEFT JOIN locations black_location ON black_location.id = buy.location_id
-                WHERE buy.unit_price_silver - sell.unit_price_silver >= @minProfitSilver
+                WHERE buy.unit_price_silver - sell.unit_price_silver - (buy.unit_price_silver::numeric * @marketTaxRate) >= @minProfitSilver
             """);
 
         if (sourceLocationIds.Length > 0)
@@ -179,7 +182,7 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
 
         if (query.MinProfitPercent is { } minProfitPercent)
         {
-            sql.AppendLine("AND (profit_per_item_silver::numeric / NULLIF(sell_price_silver, 0)::numeric * 100) >= @minProfitPercent");
+            sql.AppendLine("AND (net_profit_per_item_silver / NULLIF(sell_price_silver, 0)::numeric * 100) >= @minProfitPercent");
             command.Parameters.AddWithValue("minProfitPercent", minProfitPercent);
         }
 
@@ -192,7 +195,7 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
                     COALESCE(
                         SUM(buy_amount) OVER (
                             PARTITION BY sell_server_id, sell_order_id
-                            ORDER BY profit_per_item_silver DESC, buy_last_seen_at_utc DESC, buy_order_id
+                            ORDER BY net_profit_per_item_silver DESC, buy_last_seen_at_utc DESC, buy_order_id
                             ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
                         ),
                         0
@@ -217,6 +220,7 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
                     sell_price_silver,
                     sell_amount,
                     sell_last_seen_at_utc,
+                    net_profit_per_item_silver,
                     LEAST(
                         buy_amount,
                         GREATEST(0::bigint, sell_amount - previously_allocated_buy_amount)
@@ -248,7 +252,7 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
 
         if (query.MinTotalProfitSilver is { } minTotalProfitSilver)
         {
-            sql.AppendLine("AND (buy_price_silver - sell_price_silver) * max_tradable_amount >= @minTotalProfitSilver");
+            sql.AppendLine("AND net_profit_per_item_silver * max_tradable_amount >= @minTotalProfitSilver");
             command.Parameters.AddWithValue("minTotalProfitSilver", Math.Max(0, minTotalProfitSilver));
         }
 
@@ -280,13 +284,13 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
             "buyprice" => $"sell_price_silver {direction}",
             "route" => $"source_location_name {direction}, selling_location_name {direction}",
             "sellprice" => $"buy_price_silver {direction}",
-            "profit" => $"(buy_price_silver - sell_price_silver) {direction}",
+            "profit" => $"net_profit_per_item_silver {direction}",
             "qty" => $"max_tradable_amount {direction}",
             "freshness" => $"LEAST(buy_last_seen_at_utc, sell_last_seen_at_utc) {freshnessDirection}",
-            _ => $"(buy_price_silver - sell_price_silver) * max_tradable_amount {direction}",
+            _ => $"net_profit_per_item_silver * max_tradable_amount {direction}",
         };
 
-        return $"ORDER BY {primary}, (buy_price_silver - sell_price_silver) * max_tradable_amount DESC, buy_price_silver - sell_price_silver DESC, buy_last_seen_at_utc DESC, buy_order_id";
+        return $"ORDER BY {primary}, net_profit_per_item_silver * max_tradable_amount DESC, net_profit_per_item_silver DESC, buy_last_seen_at_utc DESC, buy_order_id";
     }
 
     private static void AppendOptionalFilters(
@@ -354,5 +358,10 @@ public sealed class PostgreSqlBlackMarketFlipQueryService : IBlackMarketFlipQuer
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private static decimal NormalizeMarketTaxRate(decimal marketTaxRate)
+    {
+        return Math.Clamp(marketTaxRate, 0, 1);
     }
 }

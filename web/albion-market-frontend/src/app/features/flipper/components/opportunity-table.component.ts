@@ -6,6 +6,7 @@ import { buildProfitTierMap, ProfitTier } from '../../../core/domain/profit-tier
 import { qualityMeta, extractTier, extractEnchant, TIER_COLORS } from '../../../core/domain/quality';
 import { SOURCE_LOCATIONS, SELLING_LOCATIONS } from '../../../core/domain/locations';
 import { itemImageUrl } from '../../../core/market-api.service';
+import { profitAfterMarketTax, totalProfitAfterMarketTax } from '../../../core/domain/market-tax';
 
 export type SortKey = 'item' | 'quality' | 'buyPrice' | 'route' | 'sellPrice' | 'profit' | 'total' | 'qty' | 'freshness';
 export type SortDirection = 'asc' | 'desc';
@@ -237,15 +238,15 @@ const COLS: Array<{ key: SortKey | null; label: string; align: 'left' | 'right' 
 
             <!-- Profit / Unit -->
             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
-              <span [style.color]="profitColor(row.profitTier)" class="mono" style="font-size:14px;font-weight:700;">+{{ row.data.profitPerItemSilver | silver }}</span>
+              <span [style.color]="profitColor(row.profitTier)" class="mono" style="font-size:14px;font-weight:700;">+{{ netProfitPerItem(row.data) | silver }}</span>
               <span [style.color]="profitColor(row.profitTier)" [style.background]="profitBg(row.profitTier)" [style.border]="'1px solid ' + profitColor(row.profitTier) + '30'" class="mono" style="font-size:11px;font-weight:600;border-radius:3px;padding:1px 5px;">
-                +{{ row.data.profitPercent >= 100 ? row.data.profitPercent.toFixed(0) : row.data.profitPercent.toFixed(1) }}%
+                +{{ netProfitPercent(row.data).toFixed(netProfitPercent(row.data) >= 100 ? 0 : 1) }}%
               </span>
             </div>
 
             <!-- Total Profit -->
             <div style="text-align:right;">
-              <span [style.color]="profitColor(row.totalTier)" class="mono" style="font-size:12px;font-weight:600;">+{{ row.data.estimatedTotalProfitSilver | silver }}</span>
+              <span [style.color]="profitColor(row.totalTier)" class="mono" style="font-size:12px;font-weight:600;">+{{ netEstimatedTotalProfit(row.data) | silver }}</span>
             </div>
 
             <!-- Qty -->
@@ -343,6 +344,7 @@ export class OpportunityTableComponent {
   readonly totalCount = input(0);
   readonly totalPages = input(0);
   readonly hasMore = input(false);
+  readonly taxRate = input(0);
 
   @Output() readonly rowClick = new EventEmitter<FlipOpportunity>();
   @Output() readonly sortChange = new EventEmitter<{ key: SortKey; direction: SortDirection }>();
@@ -360,8 +362,8 @@ export class OpportunityTableComponent {
 
   readonly allRows = computed<Row[]>(() => {
     const data = this.opportunities();
-    const profitTiers = buildProfitTierMap(data, (r) => r.profitPerItemSilver);
-    const totalTiers = buildProfitTierMap(data, (r) => r.estimatedTotalProfitSilver);
+    const profitTiers = buildProfitTierMap(data, (r) => this.netProfitPerItem(r));
+    const totalTiers = buildProfitTierMap(data, (r) => this.netEstimatedTotalProfit(r));
     return data.map<Row>((d) => {
       const q = qualityMeta(d.qualityLevel);
       const isBlackMarket = d.sellingLocationId === '3003' || d.sellingLocationName?.toLowerCase().includes('black market');
@@ -387,16 +389,32 @@ export class OpportunityTableComponent {
   readonly pageEnd = computed(() => Math.min(this.page() * this.pageSize(), this.totalCount()));
 
   readonly totalBuyValue = computed(() => this.opportunities().reduce((s, o) => s + o.sellPriceSilver * o.maxTradableAmount, 0));
-  readonly totalProfit = computed(() => this.opportunities().reduce((s, o) => s + o.estimatedTotalProfitSilver, 0));
+  readonly totalProfit = computed(() => this.opportunities().reduce((s, o) => s + this.netEstimatedTotalProfit(o), 0));
   readonly avgProfitPerUnit = computed(() => {
     const opps = this.opportunities();
     if (opps.length === 0) return 0;
-    return opps.reduce((s, o) => s + o.profitPerItemSilver, 0) / opps.length;
+    return opps.reduce((s, o) => s + this.netProfitPerItem(o), 0) / opps.length;
   });
   readonly totalQty = computed(() => this.opportunities().reduce((s, o) => s + o.maxTradableAmount, 0));
 
   imgUrl(d: FlipOpportunity): string {
     return itemImageUrl(d.itemUniqueName, d.enchantmentLevel, d.qualityLevel);
+  }
+
+  netProfitPerItem(d: FlipOpportunity): number {
+    return profitAfterMarketTax(d.buyPriceSilver, d.sellPriceSilver, this.taxRate());
+  }
+
+  netEstimatedTotalProfit(d: FlipOpportunity): number {
+    return totalProfitAfterMarketTax(d.buyPriceSilver, d.sellPriceSilver, d.maxTradableAmount, this.taxRate());
+  }
+
+  netProfitPercent(d: FlipOpportunity): number {
+    if (d.sellPriceSilver === 0) {
+      return 0;
+    }
+
+    return this.netProfitPerItem(d) / d.sellPriceSilver * 100;
   }
 
   tierColor(tier: string): string {

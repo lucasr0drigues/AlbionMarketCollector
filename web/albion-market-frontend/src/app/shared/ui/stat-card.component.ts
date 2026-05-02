@@ -32,7 +32,8 @@ const ACCENT_COLORS: Record<StatCardAccent, string> = {
 export class StatCardComponent {
   readonly label = input.required<string>();
   readonly accent = input<StatCardAccent>('neutral');
+  readonly customColor = input<string | null>(null);
   readonly sub = input<string | null>(null);
 
-  readonly accentColor = computed(() => ACCENT_COLORS[this.accent()] ?? ACCENT_COLORS.neutral);
+  readonly accentColor = computed(() => this.customColor() ?? ACCENT_COLORS[this.accent()] ?? ACCENT_COLORS.neutral);
 }

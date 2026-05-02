@@ -25,7 +25,7 @@ public sealed class PostgreSqlBlackMarketFlipQueryServiceTests
         var tradableCteIndex = sql.IndexOf("tradable_opportunities AS", StringComparison.Ordinal);
         var finalFromIndex = sql.IndexOf("FROM tradable_opportunities", StringComparison.Ordinal);
         var tradableFilterIndex = sql.IndexOf("WHERE max_tradable_amount > 0", StringComparison.Ordinal);
-        var orderByIndex = sql.IndexOf("ORDER BY (buy_price_silver - sell_price_silver) * max_tradable_amount", StringComparison.Ordinal);
+        var orderByIndex = sql.IndexOf("ORDER BY net_profit_per_item_silver * max_tradable_amount", StringComparison.Ordinal);
 
         Assert.True(tradableCteIndex >= 0, "The query should calculate max_tradable_amount in a CTE.");
         Assert.True(finalFromIndex > tradableCteIndex, "The final projection should read from tradable_opportunities.");
@@ -33,9 +33,11 @@ public sealed class PostgreSqlBlackMarketFlipQueryServiceTests
         Assert.True(orderByIndex > tradableFilterIndex, "The max_tradable_amount alias must be ordered from the outer query.");
         Assert.Contains(command.Parameters, parameter => parameter.ParameterName == "sourceLocationIds");
         Assert.Contains(command.Parameters, parameter => parameter.ParameterName == "sellingLocationIds");
+        Assert.Contains(command.Parameters, parameter => parameter.ParameterName == "marketTaxRate" && (decimal)parameter.Value! == 0);
         Assert.Contains(command.Parameters, parameter => parameter.ParameterName == "pageSize" && (int)parameter.Value! == 48);
         Assert.Contains(command.Parameters, parameter => parameter.ParameterName == "offset" && (long)parameter.Value! == 48);
         Assert.Contains("COUNT(*) OVER() AS total_count", sql);
+        Assert.Contains("net_profit_per_item_silver", sql);
         Assert.Contains("LIMIT @pageSize OFFSET @offset;", sql);
     }
 }
